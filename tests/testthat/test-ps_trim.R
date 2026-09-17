@@ -513,16 +513,15 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
     ps_refit(fit)
 
   # A grouped summary slices the column once per group, and each slice holds
-  # scores the trimming record was not written for, so the record is dropped and
-  # says so. The summary itself reads values rather than positions.
-  summarized <- count_record_drops(
+  # scores the trimming record was not written for, so the record is dropped
+  # from the slices without comment. The summary itself reads values rather
+  # than positions.
+  out <- expect_silent(
     tibble(x, z, ps) |>
       group_by(trimmed = is_unit_trimmed(ps)) |>
       summarize(mean = mean(ps), .groups = "drop")
   )
-  expect_gt(summarized$drops, 0)
 
-  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
@@ -676,14 +675,10 @@ test_that("ps_trim() records how many observations its positions describe", {
   expect_equal(meta$n_obs, 5L)
 })
 
-test_that("slicing a ps_trim shorter drops the trimming record with a warning", {
+test_that("slicing a ps_trim shorter drops the trimming record silently", {
   x <- trim_record_fixture()
 
-  cnd <- expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trim_record_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_s3_class(sliced, "ps_trim")
   expect_equal(as.numeric(sliced), c(0.3, 0.5))
@@ -705,16 +700,13 @@ test_that("slicing a ps_trim shorter drops the trimming record with a warning", 
   )
 })
 
-test_that("filtering a ps_trim column drops the trimming record with a warning", {
+test_that("filtering a ps_trim column drops the trimming record silently", {
   skip_if_not_installed("dplyr")
 
   df <- data.frame(id = 1:5)
   df$ps <- trim_record_fixture()
 
-  expect_warning(
-    filtered <- dplyr::filter(df, id %in% 2:3),
-    class = "propensity_trim_record_warning"
-  )
+  filtered <- expect_silent(dplyr::filter(df, id %in% 2:3))
 
   expect_s3_class(filtered$ps, "ps_trim")
   expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
@@ -725,14 +717,16 @@ test_that("filtering a ps_trim column drops the trimming record with a warning",
   )
 })
 
-test_that("a length-preserving ps_trim restore keeps the trimming record", {
+test_that("a whole ps_trim keeps its trimming record through `[` and `[<-`", {
   x <- trim_record_fixture()
   meta <- ps_trim_meta(x)
   trimmed_units <- c(TRUE, FALSE, FALSE, TRUE, FALSE)
 
+  # A slice is handed no subscript, so even one that leaves every unit in place
+  # cannot vouch for the positions.
   whole <- expect_silent(vec_slice(x, seq_along(x)))
-  expect_identical(ps_trim_meta(whole), meta)
-  expect_identical(is_unit_trimmed(whole), trimmed_units)
+  expect_positions_dropped(ps_trim_meta(whole), meta)
+  expect_error(is_unit_trimmed(whole), class = "propensity_missing_meta_error")
 
   empty_subscript <- expect_silent(x[])
   expect_identical(ps_trim_meta(empty_subscript), meta)
@@ -799,14 +793,82 @@ test_that("ps_refit() refuses a ps_trim whose record was dropped", {
     upper = 0.7
   )
 
-  expect_warning(
-    sliced <- vec_slice(trimmed, 1:20),
-    class = "propensity_trim_record_warning"
-  )
+  sliced <- expect_silent(vec_slice(trimmed, 1:20))
 
   expect_error(
     ps_refit(sliced, model),
     class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("ps_refit() refuses a model of a dose for a trimmed score", {
+  set.seed(37)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+
+  # Means that happen to lie in (0, 1) can be trimmed as if they were scores,
+  # but a model of the dose never produced scores, so it cannot refit them. The
+  # dose model itself is what to trim.
+  trimmed <- ps_trim(plogis(0.5 * x), method = "ps", lower = 0.2, upper = 0.8)
+
+  fits <- list(
+    lm = lm(dose ~ x, data = dose_data),
+    gaussian = glm(dose ~ x, data = dose_data, family = gaussian())
+  )
+
+  for (kind in names(fits)) {
+    cnd <- expect_error(
+      ps_refit(trimmed, fits[[kind]], .data = dose_data),
+      class = "propensity_model_family_error",
+      info = kind
+    )
+    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+    expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+  }
+
+  expect_propensity_error(ps_refit(trimmed, fits$lm, .data = dose_data))
+  expect_propensity_error(ps_refit(trimmed, fits$gaussian, .data = dose_data))
+})
+
+test_that("ps_refit() still refits a trimmed score with any model of a probability", {
+  skip_if_not_installed("mgcv")
+
+  set.seed(39)
+  n <- 80
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  score_data <- data.frame(z = z, x = x)
+  trimmed <- ps_trim(plogis(0.5 * x), method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  # Refusing a model of a dose reads the family, and the families that fit a
+  # probability pass whatever class carries them.
+  fits <- list(
+    gam = mgcv::gam(z ~ s(x), family = binomial(), data = score_data),
+    quasibinomial = glm(z ~ x, family = quasibinomial(), data = score_data)
+  )
+
+  for (kind in names(fits)) {
+    refit <- ps_refit(trimmed, fits[[kind]], .data = score_data)
+
+    expect_s3_class(refit, "ps_trim")
+    expect_true(is_refit(refit), info = kind)
+    expect_true(all(is.na(refit[meta$trimmed_idx])), info = kind)
+    expect_false(anyNA(refit[meta$keep_idx]), info = kind)
+  }
+
+  # A quasibinomial fit estimates the same mean as a binomial one.
+  binomial_refit <- ps_refit(
+    trimmed,
+    glm(z ~ x, family = binomial(), data = score_data),
+    .data = score_data
+  )
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fits$quasibinomial, .data = score_data)),
+    as.numeric(binomial_refit)
   )
 })
 
@@ -854,31 +916,24 @@ test_that("combining ps_trim objects does not read trimmed units off the NAs", {
 
 test_that("a ps_trim that lost its record says so instead of reporting none", {
   x <- trim_record_fixture()
-  expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trim_record_warning"
-  )
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_match(vec_ptype_full(x), "trimmed 2 of", fixed = TRUE)
   expect_match(vec_ptype_full(sliced), "record dropped", fixed = TRUE)
 })
 
-test_that("a ps_trim reordered through vctrs keeps the record for the old order", {
-  # The documented limit of the coverage check, which counts observations and so
-  # sees nothing in a reordering. No subscript reaches the restore, so the
-  # record survives naming where the observations used to be.
+test_that("a ps_trim reordered through vctrs drops the record's positions", {
+  # The coverage check counts observations and so sees nothing in a
+  # reordering. No subscript reaches the restore, so the positions are dropped
+  # rather than left naming where the observations used to be.
   x <- trim_record_fixture()
 
   reordered <- expect_silent(vec_slice(x, 5:1))
   expect_equal(as.numeric(reordered), c(0.6, NA, 0.5, 0.3, NA))
-  expect_identical(ps_trim_meta(reordered), ps_trim_meta(x))
-
-  # The trimmed units now hold positions 2 and 5, and the record still names 1
-  # and 4, so the answer is the one the record gives rather than the one the
-  # values show.
-  expect_identical(
+  expect_positions_dropped(ps_trim_meta(reordered), ps_trim_meta(x))
+  expect_error(
     is_unit_trimmed(reordered),
-    c(TRUE, FALSE, FALSE, TRUE, FALSE)
+    class = "propensity_missing_meta_error"
   )
 
   # `[` is handed the subscript and re-indexes, so the same reordering through
@@ -946,6 +1001,35 @@ test_that("ps_trim rejects the categorical-only optimal method on a vector", {
 
   # The message has to point at the input the method is defined for.
   expect_propensity_error(ps_trim(ps, method = "optimal", .exposure = z))
+})
+
+test_that("ps_trim() refuses the density methods on a vector of fitted means", {
+  set.seed(29)
+  n <- 40
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  mu <- as.numeric(fitted(lm(dose ~ x)))
+
+  # A density needs the model's residuals and its family, and a vector of
+  # fitted means carries neither, so the dose model itself has to be supplied.
+  for (method in c("density", "resid")) {
+    expect_error(
+      ps_trim(mu, method = method),
+      class = "propensity_method_error",
+      info = method
+    )
+
+    # The refusal is for what was asked rather than for the values, so means
+    # that leave the unit interval hear the same thing and not the range check.
+    expect_error(
+      ps_trim(mu + 5, method = method),
+      class = "propensity_method_error",
+      info = method
+    )
+  }
+
+  expect_propensity_error(ps_trim(mu, method = "density"))
+  expect_propensity_error(ps_trim(mu + 5, method = "resid"))
 })
 
 test_that("ps_trim names `.exposure` when the method requires one", {
@@ -2761,12 +2845,6 @@ test_that("ps_trim() reads a two-level multinomial fit on the binary path", {
 })
 
 test_that("ps_trim() refuses a fit it cannot read propensity scores from", {
-  linear <- lm(z ~ x1 + x2, data = trim_model_data)
-
-  expect_error(
-    ps_trim(linear, method = "ps"),
-    class = "propensity_method_error"
-  )
   expect_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps"),
     class = "propensity_method_error"
@@ -2815,9 +2893,584 @@ test_that("ps_refit() refits a multinomial fit trimmed through the model route",
   )
 })
 
+test_that("ps_refit() refits a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_two_level_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+
+  # The retained scores are the refit model's probability of the level the
+  # binary path reads as focal, which is the one column a two-level fit reports.
+  by_hand <- nnet::multinom(
+    a2 ~ x1 + x2,
+    data = trim_model_data[meta$keep_idx, ],
+    trace = FALSE
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[meta$keep_idx] <- as.numeric(fitted(by_hand))
+
+  expect_s3_class(refitted, "ps_trim")
+  expect_true(is_refit(refitted))
+  expect_null(dim(refitted))
+  expect_type(vctrs::vec_data(refitted), "double")
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+  expect_identical(ps_trim_meta(refitted)$keep_idx, meta$keep_idx)
+})
+
+# A binomial additive fit reports its scores as a one-dimensional array. With
+# only parametric terms it fits the same model as the binomial `glm`, so the two
+# trim the same units.
+trim_gam_fit <- function() {
+  mgcv::gam(z ~ x1 + x2, data = trim_model_data, family = binomial())
+}
+
+test_that("ps_trim() trims a binomial additive fit like the equivalent glm", {
+  skip_if_not_installed("mgcv")
+
+  gam_fit <- trim_gam_fit()
+  glm_fit <- trim_binary_fit()
+  gam_scores <- predict(gam_fit, type = "response")
+  gam_scores <- setNames(as.vector(gam_scores), names(gam_scores))
+  z <- trim_model_data$z
+
+  trims <- list(
+    ps = list(method = "ps"),
+    adaptive = list(method = "adaptive"),
+    pctl = list(method = "pctl"),
+    pref = list(method = "pref", .exposure = z),
+    cr = list(method = "cr", .exposure = z)
+  )
+
+  for (kind in names(trims)) {
+    args <- trims[[kind]]
+    from_gam <- rlang::exec(ps_trim, gam_fit, !!!args)
+    from_glm <- rlang::exec(ps_trim, glm_fit, !!!args)
+
+    expect_s3_class(from_gam, "ps_trim")
+    expect_null(dim(from_gam))
+    expect_null(dim(vctrs::vec_data(from_gam)))
+    expect_same_trim(from_gam, rlang::exec(ps_trim, gam_scores, !!!args))
+    expect_identical(
+      ps_trim_meta(from_gam)$keep_idx,
+      ps_trim_meta(from_glm)$keep_idx,
+      info = kind
+    )
+    expect_identical(
+      ps_trim_meta(from_gam)$trimmed_idx,
+      ps_trim_meta(from_glm)$trimmed_idx,
+      info = kind
+    )
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_glm),
+      tolerance = 1e-6,
+      info = kind
+    )
+  }
+})
+
+test_that("ps_refit() refits a score trimmed from a binomial additive fit", {
+  skip_if_not_installed("mgcv")
+
+  fit <- trim_gam_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+
+  by_hand <- mgcv::gam(
+    z ~ x1 + x2,
+    data = trim_model_data[meta$keep_idx, ],
+    family = binomial()
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[meta$keep_idx] <- as.numeric(fitted(by_hand))
+
+  expect_true(is_refit(refitted))
+  expect_null(dim(vctrs::vec_data(refitted)))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+})
+
+# A `subset` or `weights` passed through `ps_refit()` is read the way
+# `update()` reads it for a model fit on the retained rows: a column of those
+# rows is found first, and any other name is found where the call was made.
+test_that("ps_refit() evaluates a subset expression against the retained rows", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    subset = x1 > 0
+  )
+  expect_lt(length(fitted(by_hand)), length(keep))
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_no_warning(
+    from_expr <- ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > 0
+    )
+  )
+  expect_true(is_refit(from_expr))
+  expect_equal(as.numeric(from_expr), expected, tolerance = 1e-10)
+
+  # A name the retained rows do not carry is read from the calling frame, and a
+  # column the rows do carry masks a variable of the same name there.
+  cutoff <- 0
+  x1 <- rep(-1, 3)
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > cutoff
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+
+  # A logical vector indexes the retained rows, which are the data the refit is
+  # handed, as it always has.
+  positive <- kept_rows$x1 > 0
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = positive
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() evaluates subset and weights expressions from a function", {
+  weighted_data <- trim_model_data
+  weighted_data$w <- rep(1:3, length.out = nrow(weighted_data))
+  fit <- glm(z ~ x1 + x2, data = weighted_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- weighted_data[keep, ]
+
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    weights = w,
+    subset = x2 < 0.5
+  )
+  expected <- rep(NA_real_, nrow(weighted_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  # Neither the columns nor the threshold are visible where the model was fit,
+  # only in the frame of the function that asks for the refit.
+  refit_within <- function(trimmed, fit, data) {
+    threshold <- 0.5
+    ps_refit(trimmed, fit, .data = data, weights = w, subset = x2 < threshold)
+  }
+
+  expect_no_warning(refitted <- refit_within(trimmed, fit, weighted_data))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-10)
+})
+
+test_that("ps_refit() removes the model's weights when passed weights = NULL", {
+  weighted_data <- trim_model_data
+  weighted_data$w <- rep(1:3, length.out = nrow(weighted_data))
+  fit <- glm(
+    z ~ x1 + x2,
+    data = weighted_data,
+    family = binomial(),
+    weights = w
+  )
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- weighted_data[keep, ]
+
+  unweighted <- glm(z ~ x1 + x2, data = kept_rows, family = binomial())
+  weighted <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    weights = w
+  )
+  expect_false(isTRUE(all.equal(coef(unweighted), coef(weighted))))
+
+  by_hand <- function(model) {
+    expected <- rep(NA_real_, nrow(weighted_data))
+    expected[keep] <- predict(model, newdata = kept_rows, type = "response")
+    expected
+  }
+
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fit, .data = weighted_data)),
+    by_hand(weighted),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fit, .data = weighted_data, weights = NULL)),
+    by_hand(unweighted),
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() updates the model's formula with formula.", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+
+  by_hand <- glm(z ~ x1, data = kept_rows, family = binomial())
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      formula. = ~ . - x2
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+
+  # A formula held in a variable of the calling function is read there.
+  refit_within <- function(trimmed, fit) {
+    drop_x2 <- ~ . - x2
+    ps_refit(trimmed, fit, .data = trim_model_data, formula. = drop_x2)
+  }
+  expect_equal(
+    as.numeric(refit_within(trimmed, fit)),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() reads the .data and .env pronouns in its arguments", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+
+  x1 <- 0.25
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    subset = x1 > 0.25
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = .data$x1 > .env$x1
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() says how to reach a column the model does not read", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  expect_error(
+    ps_refit(trimmed, fit, subset = x2 > 0),
+    class = "propensity_no_data_error"
+  )
+  expect_propensity_error(ps_refit(trimmed, fit, subset = x2 > 0))
+
+  # With the data passed, the column is found.
+  expect_no_error(
+    ps_refit(trimmed, fit, .data = trim_model_data, subset = x2 > 0)
+  )
+})
+
+test_that("ps_refit() passes through an argument's own error", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  # Only a name the retained rows lack is a reason to pass `.data`. An error
+  # the expression raises for any other reason reaches the caller as written.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = stop("boom")),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+  expect_identical(conditionMessage(cnd), "boom")
+
+  # A name the expression reads that is available does not turn another error
+  # into a missing column.
+  expect_error(
+    ps_refit(trimmed, fit, weights = x1 + stop("boom")),
+    "boom",
+    class = "simpleError"
+  )
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = x1 + stop("boom")),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+
+  # A function the caller calls that cannot be found is not a column either.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = no_such_function_zz(x1)),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+
+  # A `.data` lookup of a missing column is relabeled like a bare name.
+  expect_error(
+    ps_refit(trimmed, fit, subset = .data$x2 > 0),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() passes through a missing name read through .env", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  # `.env` never reads a column, so passing `.data` cannot help.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, subset = x1 > .env$no_such_cutoff_zz),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "error")
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+  expect_match(conditionMessage(cnd), "no_such_cutoff_zz", fixed = TRUE)
+
+  # The same holds with the data passed.
+  cnd <- rlang::catch_cnd(
+    ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > .env$no_such_cutoff_zz
+    ),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+})
+
+test_that("ps_refit() relabels a missing name in the caller's language", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  withr::local_language("fr")
+  skip_if(
+    identical(
+      gettext("object '%s' not found", domain = "R"),
+      "object '%s' not found"
+    ),
+    "R's French message catalog is not installed"
+  )
+  expect_error(
+    ps_refit(trimmed, fit, subset = x2 > 0),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() refuses a model of every level for a vector of scores", {
+  skip_if_not_installed("nnet")
+
+  trimmed <- ps_trim(
+    predict(trim_binary_fit(), type = "response"),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_error(
+    ps_refit(trimmed, trim_categorical_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+  expect_propensity_error(
+    ps_refit(trimmed, trim_categorical_fit(), .data = trim_model_data)
+  )
+})
+
+test_that("ps_refit() refuses a model of one probability for a matrix of scores", {
+  skip_if_not_installed("nnet")
+
+  trimmed <- ps_trim(
+    fitted(trim_categorical_fit()),
+    method = "ps",
+    .exposure = trim_model_data$trt
+  )
+
+  expect_error(
+    ps_refit(trimmed, trim_two_level_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+  expect_propensity_error(
+    ps_refit(trimmed, trim_two_level_fit(), .data = trim_model_data)
+  )
+  expect_error(
+    ps_refit(trimmed, trim_binary_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+})
+
+# A trim that names the first level as focal holds the probability of that
+# level, one minus what the fit reports, and a refit keeps reporting the same
+# level's probability.
+expect_refit_keeps_focal_level <- function(fit, refit_by_hand, ...) {
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.25, upper = 0.8, ...)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  by_hand <- refit_by_hand(trim_model_data[keep, ])
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- 1 - as.numeric(fitted(by_hand))
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+  expect_true(is_refit(refitted))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+}
+
+test_that("ps_refit() keeps a first-level focal level of a binomial fit", {
+  refit_by_hand <- function(rows) {
+    glm(z ~ x1 + x2, data = rows, family = binomial())
+  }
+
+  expect_refit_keeps_focal_level(
+    trim_binary_fit(),
+    refit_by_hand,
+    .focal_level = 0
+  )
+  expect_refit_keeps_focal_level(
+    trim_binary_fit(),
+    refit_by_hand,
+    .reference_level = 1
+  )
+})
+
+test_that("ps_refit() keeps a first-level focal level of a two-level multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  refit_by_hand <- function(rows) {
+    nnet::multinom(a2 ~ x1 + x2, data = rows, trace = FALSE)
+  }
+
+  expect_refit_keeps_focal_level(
+    trim_two_level_fit(),
+    refit_by_hand,
+    .focal_level = "control"
+  )
+  expect_refit_keeps_focal_level(
+    trim_two_level_fit(),
+    refit_by_hand,
+    .reference_level = "treated"
+  )
+})
+
+test_that("a trim records whether its scores are the complement of the fit's", {
+  fit <- trim_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_false(ps_trim_meta(ps_trim(fit, method = "ps"))$focal_inverted)
+  expect_false(
+    ps_trim_meta(ps_trim(fit, method = "ps", .focal_level = 1))$focal_inverted
+  )
+  expect_true(
+    ps_trim_meta(ps_trim(fit, method = "ps", .focal_level = 0))$focal_inverted
+  )
+
+  # Supplied scores are taken as given, whichever level is named.
+  expect_false(
+    ps_trim_meta(ps_trim(
+      scores,
+      method = "pref",
+      .exposure = trim_model_data$z,
+      .focal_level = 0
+    ))$focal_inverted
+  )
+
+  # A matrix of scores and a trimmed dose model have no single level to invert.
+  expect_null(
+    ps_trim_meta(ps_trim(
+      fitted(trim_categorical_fit()),
+      method = "ps",
+      .exposure = trim_model_data$trt
+    ))$focal_inverted
+  )
+})
+
+test_that("the record of an inverted trim follows the scores", {
+  fit <- trim_binary_fit()
+  inverted <- ps_trim(
+    fit,
+    method = "ps",
+    lower = 0.25,
+    upper = 0.8,
+    .focal_level = 0
+  )
+  as_given <- ps_trim(fit, method = "ps", lower = 0.25, upper = 0.8)
+
+  expect_true(ps_trim_meta(inverted[1:10])$focal_inverted)
+  expect_true(ps_trim_meta(vctrs::vec_c(inverted, inverted))$focal_inverted)
+  refitted <- ps_refit(inverted, fit, .data = trim_model_data)
+  expect_true(ps_trim_meta(refitted)$focal_inverted)
+  weights <- wt_ate(refitted, .exposure = trim_model_data$z, .focal_level = 0)
+  expect_true(ps_trim_meta(weights)$focal_inverted)
+
+  # Scores of different levels are not scores of one trimming.
+  combined <- expect_propensity_warning(vctrs::vec_c(inverted, as_given))
+  expect_type(combined, "double")
+})
+
+test_that("a vector trim record without focal_inverted reads as not inverted", {
+  trimmed <- ps_trim(c(0.05, 0.3, 0.5, 0.7, 0.95), lower = 0.1, upper = 0.9)
+  expect_false(ps_trim_meta(trimmed)$focal_inverted)
+
+  bare_meta <- ps_trim_meta(trimmed)
+  bare_meta$focal_inverted <- NULL
+  bare <- new_trimmed_ps(vctrs::vec_data(trimmed), ps_trim_meta = bare_meta)
+
+  expect_identical(
+    trim_parameters(bare_meta),
+    trim_parameters(ps_trim_meta(trimmed))
+  )
+
+  combined <- expect_no_warning(vctrs::vec_c(bare, trimmed))
+  expect_s3_class(combined, "ps_trim")
+  expect_no_error(vctrs::vec_cast(bare, trimmed))
+
+  # A record that says the scores are inverted still differs.
+  inverted_meta <- bare_meta
+  inverted_meta$focal_inverted <- TRUE
+  expect_false(identical(
+    trim_parameters(inverted_meta),
+    trim_parameters(bare_meta)
+  ))
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
-    ps_trim(lm(z ~ x1 + x2, data = trim_model_data), method = "ps")
+    ps_trim(structure(list(), class = "not_a_model"), method = "ps")
   )
 })
 
@@ -2860,10 +3513,9 @@ test_that("ps_trim() inverts a fit's scores for a named focal level", {
   fit <- trim_binary_fit()
   inverted <- 1 - predict(fit, type = "response")
 
-  expect_same_trim(
-    trim_pref(fit, .focal_level = 0),
-    trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
-  )
+  oracle <- trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
+  attr(oracle, "ps_trim_meta")$focal_inverted <- TRUE
+  expect_same_trim(trim_pref(fit, .focal_level = 0), oracle)
   expect_false(identical(
     ps_trim_meta(trim_pref(fit, .focal_level = 0))$keep_idx,
     ps_trim_meta(trim_pref(fit))$keep_idx
@@ -2876,14 +3528,13 @@ test_that("ps_trim() inverts a two-level multinomial fit for a named level", {
   fit <- trim_two_level_fit()
   inverted <- 1 - as.numeric(fitted(fit))
 
-  expect_same_trim(
-    trim_pref(fit, .focal_level = "control"),
-    trim_pref(
-      inverted,
-      .exposure = trim_model_data$a2,
-      .focal_level = "control"
-    )
+  oracle <- trim_pref(
+    inverted,
+    .exposure = trim_model_data$a2,
+    .focal_level = "control"
   )
+  attr(oracle, "ps_trim_meta")$focal_inverted <- TRUE
+  expect_same_trim(trim_pref(fit, .focal_level = "control"), oracle)
   expect_false(identical(
     ps_trim_meta(trim_pref(fit, .focal_level = "control"))$keep_idx,
     ps_trim_meta(trim_pref(fit))$keep_idx

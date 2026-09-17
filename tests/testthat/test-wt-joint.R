@@ -379,14 +379,14 @@ test_that("wt_joint() records each component's stabilization score", {
   )
 })
 
-test_that("a length-changing operation drops a per-observation joint score", {
+test_that("a slice that cannot place it drops a per-observation joint score", {
   fx <- joint_wt_fixture()
 
   # The joint record names the components rather than the units, with the one
   # exception a score is: it holds a value per observation, and a subset it no
   # longer describes would be rebuilt from a numerator belonging to units the
-  # result does not hold. The score on the weights themselves is dropped for
-  # that reason, and the one inside the record is the same vector.
+  # result does not hold. `[` subsets it with the weights; a slice handed no
+  # subscript drops it, as it drops the score on the weights themselves.
   score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
   w_a <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -396,8 +396,14 @@ test_that("a length-changing operation drops a per-observation joint score", {
 
   expect_identical(joint_wt_meta(joint)$stabilization_score[[1]], score_a)
 
+  subset <- expect_silent(joint[1:10])
+  expect_identical(
+    joint_wt_meta(subset)$stabilization_score[[1]],
+    score_a[1:10]
+  )
+
   expect_warning(
-    subset <- joint[1:10],
+    subset <- vctrs::vec_slice(joint, 1:10),
     class = "propensity_stabilization_score_warning"
   )
   expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
@@ -437,7 +443,7 @@ test_that("a dropped joint score is marked apart from one never supplied", {
 
   reported <- list()
   subset <- withCallingHandlers(
-    joint[1:10],
+    vctrs::vec_slice(joint, 1:10),
     propensity_stabilization_score_warning = function(cnd) {
       reported <<- c(reported, list(cnd))
       rlang::cnd_muffle(cnd)
@@ -482,7 +488,7 @@ test_that("a dropped score and a score never supplied are different records", {
     wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
   )
   expect_warning(
-    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    marked <- vctrs::vec_slice(wt_joint(w_a, fx$w$e), 1:10),
     class = "propensity_stabilization_score_warning"
   )
 
@@ -510,7 +516,7 @@ test_that("an unstabilized product keeps no mark of a dropped score", {
     wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
   )
   expect_warning(
-    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    marked <- vctrs::vec_slice(wt_joint(w_a, fx$w$e), 1:10),
     class = "propensity_stabilization_score_warning"
   )
   expect_identical(joint_wt_meta(marked)$score_dropped, c(TRUE, FALSE))

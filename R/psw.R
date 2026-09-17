@@ -23,6 +23,9 @@
 #'
 #' * `is_psw()` tests whether an object is a `psw` vector.
 #' * `is_stabilized()` returns `TRUE` if the weights are stabilized.
+#' * [is_wt_truncated()] returns `TRUE` if the weights themselves were
+#'   truncated, which is recorded apart from whether the propensity scores they
+#'   were built from were.
 #' * `stabilization_score()` returns the user-supplied stabilization score, or
 #'   `NULL` when none was recorded or when a per-observation score was dropped
 #'   because an operation changed the length of the weights.
@@ -71,13 +74,13 @@
 #' An operation between two `psw` objects merges what each of them records. Two
 #' different estimands are pasted together, and an estimand only one operand
 #' names stands for the result; the result is stabilized only when both operands
-#' are, and it is marked as trimmed, truncated, or calibrated when either
-#' operand is. The remaining attributes, the `stabilization_score`, the records
-#' left by a modified propensity score, the attributes describing a categorical
-#' exposure, and the exposure records, are carried by agreement: one only a
-#' single operand records carries, and one both record with the same value
-#' carries. One they record differently is dropped, since neither value
-#' describes the result, and a warning of class
+#' are, and it is marked as trimmed, truncated, calibrated, or weight-truncated
+#' when either operand is. The remaining attributes, the
+#' `stabilization_score`, the records left by a modified propensity score, the
+#' attributes describing a categorical exposure, and the exposure records, are
+#' carried by agreement: one only a single operand records carries, and one
+#' both record with the same value carries. One they record differently is
+#' dropped, since neither value describes the result, and a warning of class
 #' `propensity_metadata_conflict_warning` names it, once for each attribute
 #' dropped that way and whatever order the inputs were given in. The rule is
 #' applied per operation, so an attribute one operation drops for a
@@ -101,22 +104,60 @@
 #'
 #' Combining `psw` objects with [c()] preserves the class only when all
 #' metadata matches; mismatched metadata produces a warning and falls back to a
-#' plain numeric vector. Concatenation appends one set of observations to
-#' another, so the positions a modification record names would describe units
-#' from the other input; those records are dropped from the result whether or
-#' not the inputs agree on them. The categorical attributes name exposure levels
-#' rather than positions, and the exposure records describe the exposure rather
-#' than any unit, so both carry when the inputs agree.
+#' plain numeric vector. The trimming, truncation, and weight truncation
+#' records are compared by what they say about the modification: weights built
+#' from scores trimmed or truncated differently, from a trim that was refit
+#' and one that was not, or truncated at different bounds describe different
+#' estimands and are combined only as numbers. Weights flagged as modified with no record agree
+#' with any record. Concatenation appends one set of observations to another, so
+#' the positions a record names would describe units from the other input; the
+#' result keeps each record without its positions, which [is_refit()], the
+#' printed footer, and a later combine still read. The calibration record (`ps_calib_meta`) names the
+#' curve the scores were calibrated with rather than any position, the
+#' categorical attributes name exposure levels, and the exposure records
+#' describe the exposure rather than any unit, so all of them carry by the
+#' agreement rule above: two calibration records agree when they name the same
+#' method and smoothing.
+#'
+#' `c()` of a single `psw` returns it unchanged, with every record. A combine
+#' through vctrs drops the positional records even when it is handed a single
+#' input: `vctrs::vec_c(x)`, `dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`,
+#' and an ungrouped `dplyr::reframe()` all rebuild the column, so a later
+#' [is_unit_trimmed()], [is_unit_truncated()], or [is_unit_wt_truncated()] on
+#' the result refuses it.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
-#' Two kinds of attribute hold one value per observation and so cannot be
-#' re-indexed for a subset: a `stabilization_score` with more than one value,
-#' and the records left by a modified propensity score (`ps_trim_meta`,
-#' `ps_trunc_meta`, and `ps_calib_meta`). Where an operation goes through
-#' vctrs, these are carried when the result comes back at the length they were
-#' recorded on and dropped when it does not. Any same-length operation keeps
-#' them, a reordering or a subscript with duplicates included, so the positions
-#' a record names can end up describing different observations than they did.
+#' Two kinds of attribute hold one value per observation. The records left by
+#' a trimmed or truncated propensity score (`ps_trim_meta` and
+#' `ps_trunc_meta`) or by truncating the weights themselves
+#' (`psw_trunc_meta`) name units by position, and `[` is handed the subscript,
+#' so it re-indexes each record onto the result: `rev()`, `sort()`,
+#' `x[order(x)]`, and a shorter subset all return records naming the units at
+#' their new positions. Any other operation through vctrs is not handed a
+#' subscript, so it keeps the positions only where every unit stays at its
+#' place, as in elementwise arithmetic, and otherwise drops them, at any
+#' length: `vctrs::vec_slice()`, `dplyr::arrange()`, `dplyr::filter()`,
+#' `unique()`, `rep_len()`, and `vctrs::vec_c()` of a single input all return
+#' weights whose records name no units. A dropped record keeps its method, its
+#' bounds, and whether the model was refit, so [is_refit()], the printed
+#' footer, and the bound comparison of a later combine still read it.
+#' Subassignment with `[<-` and `is.na<-` moves no unit and keeps the records
+#' whole; `[<-` refuses a value whose records describe a different
+#' modification, and accepts one with no record. A `[<-` of a value modified
+#' the same way that writes a missing weight leaves that unit listed as
+#' retained in the record, as `is.na<-` on a `psw` does; `is.na<-` on a
+#' `ps_trim` score instead removes the unit from its retained set. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
+#' a slice does and cannot be told apart from one, so it drops the positions,
+#' and so do the helpers built on it or on a combine, such as
+#' `tidyr::replace_na()`, `dplyr::coalesce()`, `dplyr::if_else()`, and
+#' `dplyr::case_when()`.
+#'
+#' A `stabilization_score` with more than one value, on the weights or on a
+#' component of a [wt_joint()] product, is in the order of the units too. `[`
+#' subsets it with the weights, elementwise arithmetic keeps it, and any other
+#' route through vctrs that brings back observations drops it with a warning of
+#' class `propensity_stabilization_score_warning`, since the score may no longer
+#' line up with the weights.
 #'
 #' Dropping the `stabilization_score` warns, because the score was supplied by
 #' the user and the weights can be recomputed on the subset. Dropping a
@@ -131,21 +172,22 @@
 #' model fit on them still carrying a record written for rows that are no
 #' longer there.
 #'
-#' Honesty therefore lives at query time. [is_unit_trimmed()] and
-#' [is_unit_truncated()] answer by position, so each checks that the record
-#' covers the vector it is given and raises an error of class
-#' `propensity_missing_meta_error` when it does not, or when weights marked as
-#' modified carry no record at all, rather than name modified units at stale
-#' positions. [is_refit()] reads a single flag rather than a position, so it
-#' answers from any record present and refuses only when the record is absent
-#' entirely.
+#' Honesty therefore lives at query time. [is_unit_trimmed()],
+#' [is_unit_truncated()], and [is_unit_wt_truncated()] answer by position, so
+#' each checks that the record covers the vector it is given and raises an
+#' error of class `propensity_missing_meta_error` when it does not, or when
+#' weights marked as modified carry no record at all, rather than name modified
+#' units at stale positions. [is_refit()] reads a single flag rather than a
+#' position, so it answers from any record present and refuses only when the
+#' record is absent entirely.
 #'
 #' The result of any of these operations stays a `psw` and keeps every other
 #' attribute, including its stabilized, trimmed, truncated, and calibrated
-#' status, the attributes describing a categorical exposure, which name the
+#' status, the calibration record, which names a calibration curve rather than
+#' any unit, the attributes describing a categorical exposure, which name the
 #' exposure levels rather than the units, and the exposure records, which
-#' describe the exposure rather than any unit, so both mean the same thing at
-#' any length.
+#' describe the exposure rather than any unit, so all of them mean the same
+#' thing at any length.
 #'
 #' Matrix or array subscripts intentionally drop the `psw` class and return
 #' a plain numeric vector via base R linear indexing; this is required so
@@ -167,6 +209,9 @@
 #'   scores? Defaults to `FALSE`.
 #' @param calibrated Logical. Were the weights derived from calibrated
 #'   propensity scores? Defaults to `FALSE`.
+#' @param wt_truncated Logical. Were the weights themselves truncated? This is
+#'   separate from `truncated`, which describes the propensity scores the
+#'   weights were built from. Defaults to `FALSE`.
 #' @param stabilization_score Optional numeric stabilization score to record on
 #'   the object, either a single value or one value per observation. Every value
 #'   must be positive and finite. Defaults to `NULL`, meaning no fixed score was
@@ -227,6 +272,7 @@ new_psw <- function(
   truncated = FALSE,
   calibrated = FALSE,
   stabilization_score = NULL,
+  wt_truncated = FALSE,
   ...
 ) {
   vec_assert(x, ptype = double())
@@ -239,6 +285,7 @@ new_psw <- function(
     trimmed = trimmed,
     truncated = truncated,
     calibrated = calibrated,
+    wt_truncated = wt_truncated,
     stabilization_score = stabilization_score,
     ...,
     class = c("psw", "causal_wts"),
@@ -256,7 +303,8 @@ psw <- function(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  wt_truncated = FALSE
 ) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
@@ -272,7 +320,8 @@ psw <- function(
     trimmed = trimmed,
     truncated = truncated,
     calibrated = calibrated,
-    stabilization_score = stabilization_score
+    stabilization_score = stabilization_score,
+    wt_truncated = wt_truncated
   )
 }
 
@@ -338,13 +387,17 @@ stabilization_score <- function(wt) {
 #'   `"pooled"` for the pooled residual root mean square, `"mle"` for a scale
 #'   estimated under the family that reads it, which [dens_t()] and
 #'   [dens_laplace()] take with `sigma_method = "mle"`, and `"supplied"` for a
-#'   `.sigma` the caller gave.
-#' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
-#'   spread estimated from the residuals, by either estimator, and for one
-#'   supplied per observation. A spread that is one
-#'   number is a constant the weights can be rebuilt from, which is what
-#'   [ipw()] needs of it; a spread that changes with the observation is not,
-#'   so the record holds where it came from and nothing more.
+#'   `.sigma` the caller gave. Weights built from a dose model trimmed with
+#'   [ps_trim()] record where the trim's spread came from.
+#' * `sigma_value`, the single spread the weights were read at when it was not
+#'   estimated by the weight function itself: one the caller supplied, or the
+#'   spread a dose model trimmed with [ps_trim()] holds in its record, which is
+#'   recorded whatever its source. It is `NULL` for a spread estimated from the
+#'   residuals, by either estimator, and for one supplied per observation. A
+#'   spread that is one number is a constant the weights can be rebuilt from,
+#'   which is what [ipw()] needs of it; a spread that changes with the
+#'   observation is not, so the record holds where it came from and nothing
+#'   more.
 #'
 #' Weights that carry a density record print it under their values, as the
 #' lines `format()` renders: the density family, the numerator, and the spread,
@@ -801,6 +854,228 @@ is_refit.psw <- function(x) {
   isTRUE(ps_trim_meta(x)$refit)
 }
 
+#' Test whether the weights themselves have been truncated
+#'
+#' @description
+#' `is_wt_truncated()` returns `TRUE` for a [psw] vector whose own values were
+#' bounded, and `is_unit_wt_truncated()` returns which of its weights the bound
+#' moved.
+#'
+#' Truncating the weights is recorded apart from truncating the propensity
+#' scores they were built from, which [is_ps_truncated()] and
+#' [is_unit_truncated()] report. The two are different operations, and a set of
+#' weights can carry either, both, or neither.
+#'
+#' @details
+#' The truncation leaves a record on the weights, the `psw_trunc_meta`
+#' attribute, holding the method, the bound as given and as applied, and the
+#' positions of the weights it moved. `is_unit_wt_truncated()` answers from
+#' those positions, so the record follows the rules [psw] describes for the
+#' records a modified propensity score leaves: it is kept through arithmetic
+#' and subassignment, re-indexed through the subscript of `[`, and loses its
+#' positions to any other slice and to a combine, which keeps the method and
+#' bounds. The `wt_truncated` flag describes the weights as
+#' a whole and is kept through all of those, so `is_wt_truncated()` keeps its
+#' answer where `is_unit_wt_truncated()` has none to give.
+#'
+#' `is_unit_wt_truncated()` therefore checks that the record covers the weights
+#' it is given, and raises an error of class `propensity_missing_meta_error`
+#' when it does not, or when weights marked as truncated carry no record at
+#' all, rather than name truncated weights at stale positions. Weights that
+#' were not truncated have no record to read, and every weight is reported as
+#' untouched.
+#'
+#' @param x An object. `is_unit_wt_truncated()` accepts only a [psw] vector.
+#'
+#' @return
+#' * `is_wt_truncated()`: a single `TRUE` or `FALSE`. It is `FALSE` for
+#'   anything that is not a [psw] vector.
+#' * `is_unit_wt_truncated()`: a logical vector the same length as `x`, `TRUE`
+#'   for each weight the bound moved.
+#'
+#' @seealso [psw] for the weight vector class, and [is_ps_truncated()] for
+#'   truncation of the propensity scores.
+#'
+#' @examples
+#' w <- psw(c(1.2, 0.8, 1.5), estimand = "ate")
+#' is_wt_truncated(w)
+#' is_unit_wt_truncated(w)
+#'
+#' @export
+is_wt_truncated <- function(x) {
+  UseMethod("is_wt_truncated")
+}
+
+#' @export
+is_wt_truncated.default <- function(x) {
+  FALSE
+}
+
+#' @export
+is_wt_truncated.psw <- function(x) {
+  isTRUE(attr(x, "wt_truncated"))
+}
+
+#' @rdname is_wt_truncated
+#' @export
+is_unit_wt_truncated <- function(x) {
+  UseMethod("is_unit_wt_truncated")
+}
+
+#' @export
+is_unit_wt_truncated.default <- function(x) {
+  abort(
+    "{.code is_unit_wt_truncated()} not supported for class {.val {class(x)}}",
+    error_class = "propensity_method_error"
+  )
+}
+
+#' @export
+is_unit_wt_truncated.psw <- function(x) {
+  # No observations, no answers. A record kept on an empty vector describes
+  # observations it does not have, and indexing an empty logical by the
+  # positions it names would grow one padded with `NA`.
+  if (length(x) == 0) {
+    return(logical(0))
+  }
+
+  out <- vector("logical", length = length(x))
+  if (!is_wt_truncated(x)) {
+    return(out)
+  }
+
+  check_psw_trunc_meta_covers(x, "is_unit_wt_truncated()")
+
+  meta <- attr(x, "psw_trunc_meta")
+  out[meta$truncated_idx] <- TRUE
+
+  out
+}
+
+# What truncating the weights leaves on them: the method, the bound as the
+# caller gave it and as it was applied, and the positions of the weights it
+# moved, counted against the number of observations those positions describe.
+new_psw_trunc_meta <- function(
+  method,
+  lower,
+  upper,
+  lower_value,
+  upper_value,
+  truncated_idx,
+  n_obs
+) {
+  structure(
+    list(
+      method = method,
+      lower = lower,
+      upper = upper,
+      lower_value = lower_value,
+      upper_value = upper_value,
+      truncated_idx = truncated_idx,
+      n_obs = n_obs
+    ),
+    class = "propensity_psw_trunc_meta"
+  )
+}
+
+# The part of a weight truncation record that says what operation was applied,
+# as opposed to which units it happened to move. Two samples truncated the same
+# way move different units and still describe the same estimand.
+wt_trunc_parameters <- function(meta) {
+  meta[c("method", "lower", "upper", "lower_value", "upper_value")]
+}
+
+# How each modification record a psw carries is described, as opposed to which
+# units it touched, and how a disagreement on it is named. A combine compares
+# these, since weights modified differently target different estimands. The
+# refit flag is part of a trimming's description: weights from a refit model and
+# from the model the trim was read off are different weights.
+psw_record_settings <- function(field, meta) {
+  switch(
+    field,
+    ps_trim_meta = c(trim_parameters(meta), list(refit = isTRUE(meta$refit))),
+    ps_trunc_meta = trunc_parameters(meta),
+    psw_trunc_meta = wt_trunc_parameters(unclass(meta))
+  )
+}
+
+psw_record_problems <- c(
+  ps_trim_meta = "different trimming parameters",
+  ps_trunc_meta = "different truncation parameters",
+  psw_trunc_meta = "different weight truncation bounds"
+)
+
+# The first record the two sets of weights describe differently, named the way
+# the coercion warning names it, or `NULL` when they agree. A record only one of
+# them carries has nothing to disagree with, as for the other carried
+# attributes: weights flagged as modified with no record agree with any record.
+psw_record_disagreement <- function(x, y) {
+  for (field in psw_modification_meta) {
+    x_meta <- attr(x, field)
+    y_meta <- attr(y, field)
+    if (
+      !is.null(x_meta) &&
+        !is.null(y_meta) &&
+        !identical(
+          psw_record_settings(field, x_meta),
+          psw_record_settings(field, y_meta)
+        )
+    ) {
+      return(psw_record_problems[[field]])
+    }
+  }
+
+  NULL
+}
+
+# The records a combined prototype carries: each input's description of its
+# modification, without the positions, which would name units of one input
+# among the combined observations. The inputs agree wherever both carry one, so
+# the first present is the one kept.
+combined_psw_records <- function(x, y) {
+  records <- lapply(psw_modification_meta, function(field) {
+    meta <- attr(x, field)
+    if (is.null(meta)) {
+      meta <- attr(y, field)
+    }
+    if (!is.null(meta)) drop_psw_record(field, meta)
+  })
+  names(records) <- psw_modification_meta
+  records
+}
+
+# The weight truncation record travels the routes the score-scale records
+# travel and can outlive the observations it describes the same way, so the
+# positional query refuses where they do.
+check_psw_trunc_meta_covers <- function(x, fn, call = rlang::caller_env()) {
+  meta <- attr(x, "psw_trunc_meta")
+  n <- length(x)
+
+  if (record_covers(meta, n)) {
+    return(invisible(x))
+  }
+
+  recorded <- meta$n_obs
+  problem <- if (is.null(recorded)) {
+    "These weights are marked as truncated but carry no record of which
+     weights were truncated."
+  } else {
+    "The record covers {recorded} observation{?s} and these weights have {n},
+     so its positions do not describe them."
+  }
+
+  abort(
+    c(
+      "{.code {fn}} has no usable weight truncation record for these weights.",
+      x = problem,
+      i = "Call {.code {fn}} on the weights the truncation returned, before
+           subsetting or combining them."
+    ),
+    error_class = "propensity_missing_meta_error",
+    call = call
+  )
+}
+
 #' @export
 vec_ptype_abbr.psw <- function(x, ...) {
   estimand <- estimand(x)
@@ -838,17 +1113,22 @@ obj_print_footer.psw <- function(x, ...) {
   # estimated the numerator is named there, among the rest of the ratio.
   if (!is.null(meta)) {
     writeLines(format(meta))
-
-    return(invisible(x))
+  } else {
+    # Weights that are not a ratio of densities record no ratio and print none.
+    # A numerator the caller's model estimated is still worth naming, the
+    # reader's question being the same one either way: which numerator are
+    # these weights divided by.
+    formula <- density_meta_model_formula(numerator_model(x))
+    if (!is.null(formula)) {
+      writeLines(paste("stabilize:", formula))
+    }
   }
 
-  # Weights that are not a ratio of densities record no ratio and print none.
-  # A numerator the caller's model estimated is still worth naming, the
-  # reader's question being the same one either way: which numerator are these
-  # weights divided by.
-  formula <- density_meta_model_formula(numerator_model(x))
-  if (!is.null(formula)) {
-    writeLines(paste("stabilize:", formula))
+  # A bound on the weights themselves is reported after whatever describes how
+  # they were built, since it was applied to them afterwards.
+  truncation <- format_psw_trunc_line(x)
+  if (!is.null(truncation)) {
+    writeLines(truncation)
   }
 
   invisible(x)
@@ -878,6 +1158,7 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
   trimmed <- is_ps_trimmed(x) || is_ps_trimmed(y)
   truncated <- is_ps_truncated(x) || is_ps_truncated(y)
   calibrated <- is_ps_calibrated(x) || is_ps_calibrated(y)
+  wt_truncated <- is_wt_truncated(x) || is_wt_truncated(y)
 
   rslts <- vec_cast(vec_arith_base(op, x, y), to = double())
   attributes(rslts) <- NULL
@@ -927,6 +1208,7 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
     trimmed = trimmed,
     truncated = truncated,
     calibrated = calibrated,
+    wt_truncated = wt_truncated,
     attrs = attrs
   )
 }
@@ -936,7 +1218,7 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
 vec_arith.psw.MISSING <- function(op, x, y, ...) {
   switch(
     op,
-    `-` = vec_restore(-1 * vec_data(x), x), # Returns psw (preserves class)
+    `-` = restore_psw(-1 * vec_data(x), x, in_place = TRUE),
     `+` = x, # Returns psw unchanged
     stop_incompatible_op(op, x, y)
   )
@@ -946,21 +1228,21 @@ vec_arith.psw.MISSING <- function(op, x, y, ...) {
 #' @method vec_arith.psw numeric
 vec_arith.psw.numeric <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, x)
+  restore_psw(result, x, in_place = TRUE)
 }
 
 #' @export
 #' @method vec_arith.numeric psw
 vec_arith.numeric.psw <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, y)
+  restore_psw(result, y, in_place = TRUE)
 }
 
 #' @export
 #' @method vec_arith.psw integer
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, x)
+  restore_psw(result, x, in_place = TRUE)
 }
 
 # The estimand a caller records, checked where it is recorded. It names the
@@ -994,9 +1276,9 @@ check_estimand_type <- function(estimand, call = rlang::caller_env()) {
 }
 
 # A stabilization score of length > 1 is indexed by observation, so it is only
-# meaningful at the length it was recorded on. Nothing rebuilding a psw is given
-# the indices behind a length change, and the subscript method for this class is
-# owned upstream, so per-observation metadata cannot be re-indexed here.
+# meaningful at the length it was recorded on. This checks a score against the
+# observations it is supplied for; `place_stabilization_score()` decides what an
+# operation on the weights does with one.
 #
 # Zero-length data is exempt. A prototype or empty subset carries no
 # observations, so a score on it lines up with nothing and misleads no one, and
@@ -1004,6 +1286,31 @@ check_estimand_type <- function(estimand, call = rlang::caller_env()) {
 # against the length that observations actually arrive at.
 stabilization_score_aligns <- function(score, n) {
   n == 0 || length(score) <= 1 || length(score) == n
+}
+
+# The score a result holds once data has arrived at `n` observations. A scalar
+# scales every weight and holds anywhere. A per-observation score is in the
+# order of the units, so it follows the rules a position record follows: `[`
+# hands over `i`, the positions among the `n_obs` units of the source the result
+# is built from, and the score is subset with them when it covers the source;
+# otherwise it is kept only where the caller vouches that every unit is still at
+# its place (`in_place`), or where the data holds no observations at all.
+place_stabilization_score <- function(
+  score,
+  n,
+  in_place = FALSE,
+  i = NULL,
+  n_obs = NULL
+) {
+  if (length(score) <= 1) {
+    return(score)
+  }
+
+  if (!is.null(i)) {
+    return(if (length(score) == n_obs) score[i])
+  }
+
+  if (n == 0 || (in_place && length(score) == n)) score
 }
 
 # The score a caller supplies, checked where it is recorded. It multiplies the
@@ -1098,10 +1405,20 @@ check_stabilization_score <- function(score, n, call = rlang::caller_env()) {
   as.double(score)
 }
 
-# The records a modified propensity score leaves on the weights built from it.
-# Each holds indices into the observations it was recorded on, so like a
+# The records a trimmed or truncated propensity score leaves on the weights
+# built from it, and the record truncating the weights themselves leaves. Each
+# holds indices into the observations it was recorded on, so like a
 # per-observation stabilization score, each is only meaningful at that length.
-psw_modification_meta <- c("ps_trim_meta", "ps_trunc_meta", "ps_calib_meta")
+psw_modification_meta <- c(
+  "ps_trim_meta",
+  "ps_trunc_meta",
+  "psw_trunc_meta"
+)
+
+# The record a calibrated propensity score leaves on the weights built from it.
+# It names the curve the scores were calibrated with and whether that curve was
+# smoothed, and no unit, so it carries no length of its own.
+psw_calib_attr <- "ps_calib_meta"
 
 # Attributes describing a categorical exposure. These name the exposure levels
 # rather than the units, so they carry no length of their own.
@@ -1121,15 +1438,69 @@ psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 # that keeps the record lets the restore building the real result carry it on to
 # the observations.
 #
-# Any same-length operation keeps indices that may no longer point where they
-# did, a reordering or a subscript with duplicates included. Nothing rebuilding
-# a psw is handed the subscript, so neither can be told apart from an untouched
-# vector here. `is_unit_trimmed()` checks the record covers the vector it is
-# given, which catches a length change from any route, but a same-length
-# rearrangement is beyond what either can see and is documented rather than
-# guarded.
-modification_meta_aligns <- function(n, to) {
-  n == 0 || n == length(to)
+# Data at `to`'s length is not enough on its own. A slice that reorders the
+# units arrives at the same length as one that leaves them where they were, and
+# a restore is not handed the subscript that would tell the two apart. So the
+# indices are kept only where the caller vouches that every unit is still at its
+# position (`in_place`): elementwise arithmetic, and truncating the weights
+# themselves. `[` knows its subscript and re-indexes the records itself
+# (`reindex_psw_records()`). Every other restore of observations drops their
+# positions.
+modification_meta_aligns <- function(n, to, in_place = FALSE) {
+  n == 0 || (in_place && n == length(to))
+}
+
+# How each positional record is re-indexed onto a subscript, and how its
+# positions are dropped. What a record says about the modification itself, its
+# method, bounds, and whether the model was refit, names no unit and holds at
+# any length and in any order, so a drop leaves it for the flags, the footer, and
+# the bound comparison of a later combine to read.
+reindex_psw_record <- function(field, meta, i) {
+  if (identical(field, "ps_trim_meta")) {
+    reindex_trim_record(meta, i)
+  } else {
+    reindex_trunc_record(meta, i)
+  }
+}
+
+drop_psw_record <- function(field, meta) {
+  if (identical(field, "ps_trim_meta")) {
+    drop_trim_record(meta)
+  } else {
+    drop_trunc_record(meta)
+  }
+}
+
+drop_psw_record_positions <- function(attrs) {
+  for (field in psw_modification_meta) {
+    meta <- attrs[[field]]
+    if (!is.null(meta)) {
+      attrs[[field]] <- drop_psw_record(field, meta)
+    }
+  }
+
+  attrs
+}
+
+# `i` holds the positions in `x` the result is built from, in the order it holds
+# them. A record that covers `x` is re-indexed onto them; one that does not
+# cannot be placed and loses its positions, as a restore drops them.
+reindex_psw_records <- function(attrs, x, i) {
+  n_obs <- length(x)
+
+  for (field in psw_modification_meta) {
+    meta <- attr(x, field)
+    if (is.null(meta)) {
+      next
+    }
+    attrs[[field]] <- if (record_covers(meta, n_obs)) {
+      reindex_psw_record(field, meta, i)
+    } else {
+      drop_psw_record(field, meta)
+    }
+  }
+
+  attrs
 }
 
 # What the joint record can still say once data has arrived at `n` observations.
@@ -1137,23 +1508,33 @@ modification_meta_aligns <- function(n, to) {
 # exception a stabilization score is: it holds a value per observation, and a
 # score that no longer describes the observations the result holds is reported
 # as absent, for the reason the score on the weights themselves is.
-aligned_joint_wt_meta <- function(meta, n) {
+aligned_joint_wt_meta <- function(
+  meta,
+  n,
+  in_place = FALSE,
+  i = NULL,
+  n_obs = NULL
+) {
   if (is.null(meta) || is.null(meta$stabilization_score)) {
     return(meta)
   }
 
-  aligned <- vapply(
-    meta$stabilization_score,
-    stabilization_score_aligns,
-    logical(1),
-    n = n
+  scores <- meta$stabilization_score
+  placed <- lapply(
+    scores,
+    place_stabilization_score,
+    n = n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
   )
+  meta$stabilization_score[] <- placed
 
+  aligned <- lengths(scores) == 0 | lengths(placed) > 0
   if (all(aligned)) {
     return(meta)
   }
 
-  meta$stabilization_score[!aligned] <- list(NULL)
   # The emptied slot is the slot a component the caller never stabilized on a
   # score has, so the drop is recorded rather than left to be read off an
   # absence. A component whose score is gone was stabilized on a numerator
@@ -1181,16 +1562,21 @@ psw_stabilization_scores <- function(x) {
 psw_joint_attr <- "joint_wt_meta"
 
 # Everything a psw carries beyond the six fields describing the weights as a
-# whole. The score and the modification records are indexed by observation; the
-# categorical attributes name exposure levels, the exposure records describe the
-# exposure, and the joint record names the two components, so all of those hold
-# at any length.
-psw_carried_attrs <- c(
-  "stabilization_score",
-  psw_modification_meta,
+# whole. The score and the positional modification records are indexed by
+# observation; the calibration record names a curve, the categorical attributes
+# name exposure levels, the exposure records describe the exposure, and the
+# joint record names the two components, so all of those hold at any length.
+psw_length_free_attrs <- c(
+  psw_calib_attr,
   psw_categorical_attrs,
   psw_exposure_attrs,
   psw_joint_attr
+)
+
+psw_carried_attrs <- c(
+  "stabilization_score",
+  psw_modification_meta,
+  psw_length_free_attrs
 )
 
 # The attributes a disagreement has already dropped from a prototype under
@@ -1218,6 +1604,7 @@ psw_carried_attrs <- c(
 # recorded here rather than guarded against.
 psw_conflicted_attr <- "psw_conflicted_attrs"
 
+
 conflicted_psw_attrs <- function(x) {
   out <- attr(x, psw_conflicted_attr)
   if (is.null(out)) character() else out
@@ -1227,21 +1614,32 @@ conflicted_psw_attrs <- function(x) {
 # observations. One indexed by observation that does not describe `n` of them is
 # reported as absent, so a later read sees nothing rather than a record silently
 # misaligned with the weights.
-aligned_psw_attrs <- function(to, n) {
+aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
   attrs <- lapply(psw_carried_attrs, function(attribute) attr(to, attribute))
   names(attrs) <- psw_carried_attrs
 
-  if (!stabilization_score_aligns(attrs$stabilization_score, n)) {
-    attrs["stabilization_score"] <- list(NULL)
+  n_obs <- length(to)
+  attrs["stabilization_score"] <- list(place_stabilization_score(
+    attrs$stabilization_score,
+    n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
+  ))
+
+  if (!is.null(i)) {
+    attrs <- reindex_psw_records(attrs, to, i)
+  } else if (!modification_meta_aligns(n, to, in_place)) {
+    attrs <- drop_psw_record_positions(attrs)
   }
 
-  if (!modification_meta_aligns(n, to)) {
-    attrs[psw_modification_meta] <- list(NULL)
-  }
-
-  attrs[psw_joint_attr] <- list(
-    aligned_joint_wt_meta(attrs[[psw_joint_attr]], n)
-  )
+  attrs[psw_joint_attr] <- list(aligned_joint_wt_meta(
+    attrs[[psw_joint_attr]],
+    n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
+  ))
 
   # The record of what a fold has already dropped belongs to the prototype being
   # folded and goes no further. Data arriving at observations is the result the
@@ -1267,6 +1665,7 @@ build_psw <- function(
   trimmed,
   truncated,
   calibrated,
+  wt_truncated,
   attrs
 ) {
   out <- new_psw(
@@ -1276,7 +1675,8 @@ build_psw <- function(
     trimmed = trimmed,
     truncated = truncated,
     calibrated = calibrated,
-    stabilization_score = attrs$stabilization_score
+    stabilization_score = attrs$stabilization_score,
+    wt_truncated = wt_truncated
   )
 
   for (attribute in setdiff(names(attrs), "stabilization_score")) {
@@ -1286,7 +1686,9 @@ build_psw <- function(
   out
 }
 
-carry_psw_metadata <- function(x, to) {
+# `in_place` and `i` say how the data relates to `to`'s units; see
+# `modification_meta_aligns()` and `reindex_psw_records()`.
+carry_psw_metadata <- function(x, to, in_place = FALSE, i = NULL) {
   build_psw(
     x,
     estimand = estimand(to),
@@ -1294,7 +1696,8 @@ carry_psw_metadata <- function(x, to) {
     trimmed = is_ps_trimmed(to),
     truncated = is_ps_truncated(to),
     calibrated = is_ps_calibrated(to),
-    attrs = aligned_psw_attrs(to, length(x))
+    wt_truncated = is_wt_truncated(to),
+    attrs = aligned_psw_attrs(to, length(x), in_place = in_place, i = i)
   )
 }
 
@@ -1346,8 +1749,9 @@ psw_numerator_record <- function(x, attrs) {
 # dropped, and is named in `conflicted` rather than `conflicts` so it is not
 # reported a second time.
 merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
-  x_attrs <- aligned_psw_attrs(x, n)
-  y_attrs <- aligned_psw_attrs(y, n)
+  # Two operands combine elementwise, so each unit stays at its position.
+  x_attrs <- aligned_psw_attrs(x, n, in_place = TRUE)
+  y_attrs <- aligned_psw_attrs(y, n, in_place = TRUE)
   x_attrs["numerator_model"] <- list(psw_numerator_record(x, x_attrs))
   y_attrs["numerator_model"] <- list(psw_numerator_record(y, y_attrs))
   dropped <- union(conflicted_psw_attrs(x), conflicted_psw_attrs(y))
@@ -1423,6 +1827,12 @@ psw_attrs_agree <- function(field, x, y) {
 
   if (identical(field, psw_joint_attr)) {
     return(joint_wt_meta_agrees(x, y))
+  }
+
+  # A calibration record is compared on what describes the calibration, the
+  # comparison two calibrated scores are combined on.
+  if (identical(field, psw_calib_attr)) {
+    return(identical(calib_parameters(x), calib_parameters(y)))
   }
 
   identical(x, y)
@@ -1507,8 +1917,36 @@ warn_conflicting_psw_attrs <- function(fields, call = rlang::caller_env()) {
   )
 }
 
+# Combining a single set of weights hands back that set, so every record naming
+# its observations still describes them. vctrs cannot keep the records itself:
+# its restore sees a zero-length prototype whether that prototype was sliced
+# from the one input or supplied by a caller for data from somewhere else, so
+# every combine through vctrs drops them. Only base `c()` knows it was handed
+# one unnamed input and nothing more. Anything else, a second input, a name,
+# or a `recursive` or `use.names` value vctrs refuses, goes to vctrs unchanged.
+#' @export
+c.psw <- function(..., recursive = FALSE, use.names = TRUE) {
+  if (
+    ...length() == 1L &&
+      is.null(...names()) &&
+      isFALSE(recursive) &&
+      isTRUE(use.names)
+  ) {
+    return(..1)
+  }
+
+  NextMethod()
+}
+
 #' @export
 vec_restore.psw <- function(x, to, ...) {
+  restore_psw(x, to)
+}
+
+# The restore, for callers that can say more about the data than vctrs can:
+# `in_place` vouches that every unit is still at its position, so the position
+# records stay.
+restore_psw <- function(x, to, in_place = FALSE) {
   # Extract numeric data if needed
   if (inherits(x, "psw")) {
     x <- vec_data(x)
@@ -1521,39 +1959,132 @@ vec_restore.psw <- function(x, to, ...) {
   # than the incoming data. Outside vctrs' subassignment intermediates, where
   # the restore that follows reattaches the target's score anyway, a cast's `to`
   # is a prototype, which cannot carry a score misaligned with itself.
+  warn_dropped_scores(to, length(x), in_place = in_place)
+
+  carry_psw_metadata(x, to, in_place = in_place)
+}
+
+# The per-observation scores on `to` that an operation bringing data at `n`
+# observations drops, announced once for the operation. A score kept, placed
+# by a subscript, or held as a scalar is not mentioned.
+warn_dropped_scores <- function(to, n, in_place = FALSE, i = NULL) {
   scores <- psw_stabilization_scores(to)
-  dropped <- !vapply(
+  dropped <- vapply(
     scores,
-    stabilization_score_aligns,
-    logical(1),
-    n = length(x)
+    function(score) {
+      length(score) > 1 &&
+        is.null(place_stabilization_score(
+          score,
+          n,
+          in_place = in_place,
+          i = i,
+          n_obs = length(to)
+        ))
+    },
+    logical(1)
   )
-  if (any(dropped)) {
-    lengths <- unique(lengths(scores[dropped]))
-    warn(
-      c(
-        "Dropping the per-observation {.arg stabilization_score}.",
-        i = "A score of length {lengths} cannot be carried through an
-             operation that changes the length of the weights to
-             {length(x)}.",
-        i = "The result is still marked as stabilized. Recompute the weights
-             on the subset if you need a score aligned with them."
-      ),
-      warning_class = "propensity_stabilization_score_warning",
-      # Restore is reached through vctrs' internal dispatch, whose call would
-      # be reported here and names nothing the caller wrote.
-      call = NULL
-    )
+  if (!any(dropped)) {
+    return(invisible())
   }
 
-  carry_psw_metadata(x, to)
+  lengths <- unique(lengths(scores[dropped]))
+  problem <- if (all(lengths == n)) {
+    "A score cannot be carried through an operation that may reorder the
+     weights without saying how, such as {.fn vctrs::vec_slice} or
+     {.fn dplyr::arrange}."
+  } else {
+    "A score of length {lengths} cannot be carried through an operation that
+     changes the length of the weights to {n}."
+  }
+
+  warn(
+    c(
+      "Dropping the per-observation {.arg stabilization_score}.",
+      i = problem,
+      i = "The result is still marked as stabilized. Subset with {.code [},
+           which reorders the score with the weights, or recompute the weights
+           on the result if you need a score aligned with them."
+    ),
+    warning_class = "propensity_stabilization_score_warning",
+    # Restore is reached through vctrs' internal dispatch, whose call would
+    # be reported here and names nothing the caller wrote.
+    call = NULL
+  )
+}
+
+# The weights with every per-observation score removed, so that a slice built
+# from them has no score for its restore to drop and announce.
+without_observation_scores <- function(x) {
+  if (length(attr(x, "stabilization_score")) > 1) {
+    attr(x, "stabilization_score") <- NULL
+  }
+
+  meta <- attr(x, psw_joint_attr)
+  if (any(lengths(meta$stabilization_score) > 1)) {
+    meta$stabilization_score[lengths(meta$stabilization_score) > 1] <- list(
+      NULL
+    )
+    attr(x, psw_joint_attr) <- meta
+  }
+
+  x
+}
+
+# `[` is the one slice that knows its subscript, so it carries the position
+# records and the per-observation scores through it rather than leaving the
+# restore behind `NextMethod()` to drop them. `x[]` takes every unit where it
+# is. The slice itself is taken from weights without their per-observation
+# scores, so its restore has nothing to drop and announce; the result is then
+# rebuilt from the weights as given. An empty result is built as a restore
+# builds it, since a prototype keeps what it was sliced with.
+#' @export
+`[.psw` <- function(x, i, ...) {
+  if (missing(i)) {
+    return(x)
+  }
+
+  source <- x
+  has_scores <- any(lengths(psw_stabilization_scores(x)) > 1)
+  if (has_scores) {
+    x <- without_observation_scores(x)
+  }
+
+  out <- NextMethod()
+  if (!inherits(out, "psw")) {
+    return(out)
+  }
+
+  has_records <- any(psw_modification_meta %in% names(attributes(source)))
+  if (!has_records && !has_scores) {
+    return(out)
+  }
+
+  if (length(out) == 0) {
+    return(carry_psw_metadata(vec_data(out), source))
+  }
+
+  loc <- vec_as_location(i, n = length(source), names = names(source))
+  warn_dropped_scores(source, length(loc), i = loc)
+  carry_psw_metadata(vec_data(out), source, i = loc)
+}
+
+# Marking weights as missing moves no unit, so it goes through base `[<-`, which
+# keeps every attribute of the weights, rather than through vctrs' method, whose
+# restore cannot tell an assignment from a reordering and drops the positions.
+#' @export
+`is.na<-.psw` <- function(x, value) {
+  x[value] <- NA_real_
+  x
 }
 
 # What a psw is, as opposed to which observations it holds: the estimand the
 # weights answer, whether they were stabilized and against what score, and which
-# modification of the propensity scores they were built from. `vec_ptype2()` and
-# `vec_cast()` read the same set, so weights that combine without complaint are
-# also each other's type.
+# modification of the propensity scores they were built from, and whether the
+# weights themselves were truncated. The bound a truncation applied is left out:
+# a cast is also how a psw is checked against its own prototype, which carries
+# no record, so the bound is compared only where two inputs combine.
+# `vec_ptype2()` and `vec_cast()` read the same set, so weights that combine
+# without complaint are also each other's type.
 psw_type_fields <- function(x) {
   list(
     estimand = estimand(x),
@@ -1561,7 +2092,8 @@ psw_type_fields <- function(x) {
     stabilization_score = stabilization_score(x),
     trimmed = is_ps_trimmed(x),
     truncated = is_ps_truncated(x),
-    calibrated = is_ps_calibrated(x)
+    calibrated = is_ps_calibrated(x),
+    wt_truncated = is_wt_truncated(x)
   )
 }
 
@@ -1572,7 +2104,8 @@ psw_type_field_problems <- c(
   stabilization_score = "different stabilization scores",
   trimmed = "different trimming status",
   truncated = "different truncation status",
-  calibrated = "different calibration status"
+  calibrated = "different calibration status",
+  wt_truncated = "different weight truncation status"
 )
 
 # The first field the two objects describe differently, named the way the
@@ -1610,20 +2143,27 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     return(double())
   }
 
+  # Weights trimmed or truncated differently, or truncated at different bounds,
+  # target different estimands, so they have no common type. Only a combine
+  # sees both inputs' records, which is why they are compared here and not in
+  # `psw_type_disagreement()`, which a cast also reads.
+  problem <- psw_record_disagreement(x, y)
+  if (!is.null(problem)) {
+    warn_incompatible_metadata(x, y, problem)
+    return(double())
+  }
+
   # The prototype is shared by inputs whose observations are appended one after
   # another, so the positions a modification record names would describe units
   # from the other input. Nothing rebuilding the combined vector is handed the
-  # offsets, so the records are left off the prototype whether or not the inputs
-  # agree on them. The categorical attributes name exposure levels rather than
-  # positions, the exposure records describe the exposure rather than any unit,
-  # and the joint record names the two components a product was built from, so
-  # all of them mean the same thing at the combined length.
-  merged <- merge_psw_attrs(
-    x,
-    y,
-    0,
-    fields = c(psw_categorical_attrs, psw_exposure_attrs, psw_joint_attr)
-  )
+  # offsets, so the records reach the prototype without their positions, which
+  # keeps what they say about the modification for the next pair of a fold to
+  # compare and for the result to report. The calibration record names a curve
+  # rather than positions, the categorical attributes name exposure levels, the
+  # exposure records describe the exposure rather than any unit, and the joint
+  # record names the two components a product was built from, so all of them
+  # mean the same thing at the combined length.
+  merged <- merge_psw_attrs(x, y, 0, fields = psw_length_free_attrs)
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)
   }
@@ -1635,8 +2175,10 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     trimmed = is_ps_trimmed(x),
     truncated = is_ps_truncated(x),
     calibrated = is_ps_calibrated(x),
+    wt_truncated = is_wt_truncated(x),
     attrs = c(
       list(stabilization_score = stabilization_score(x)),
+      combined_psw_records(x, y),
       merged$attrs
     )
   )
@@ -1666,6 +2208,11 @@ cast_to_psw <- function(x, to) {
   x <- vec_cast(vec_data(x), to = double())
   attributes(x) <- NULL
 
+  # `to` describes its own units, or none if it is a prototype, and not the
+  # data being cast, so its position records and per-observation scores are
+  # dropped for any data with observations. Subassignment casts the replacement
+  # too, but base `[<-` then keeps the target's own attributes, so what the cast
+  # carries never reaches its result.
   carry_psw_metadata(x, to)
 }
 
@@ -1682,18 +2229,68 @@ cast_to_psw <- function(x, to) {
 # be converted to itself. The disagreeing field is named alongside them.
 #' @export
 vec_cast.psw.psw <- function(x, to, ...) {
+  # The modification records are compared too, by what they say about the
+  # modification, as a combine compares them: subassignment would otherwise
+  # write weights modified one way under a record describing another. A value
+  # with no record, and a prototype that took its record from agreeing inputs,
+  # has nothing to disagree with.
   problem <- psw_type_disagreement(x, to)
+  if (is.null(problem)) {
+    problem <- psw_record_disagreement(x, to)
+  }
   if (!is.null(problem)) {
     vctrs::stop_incompatible_cast(
       x,
       to,
       x_arg = "",
       to_arg = "",
-      details = problem
+      details = cast_problem_details(problem, x, to)
     )
   }
 
   x
+}
+
+# A disagreement about the score is the one a caller meets most when assigning
+# weights into weights stabilized per observation, and the bare field name says
+# nothing about what to do. The score belongs to the units of each vector, so
+# the value's cannot be written under the target's.
+cast_problem_details <- function(problem, x, to) {
+  # A record disagreement is not visible in the type labels, which can read the
+  # same on both sides, so the refusal says what to do about it.
+  if (
+    problem %in%
+      psw_record_problems &&
+      identical(vec_ptype_full(x), vec_ptype_full(to))
+  ) {
+    return(c(
+      problem,
+      i = paste(
+        "Assign `vec_data()` of the value to keep the target's record, or",
+        "rebuild the weights from one modification."
+      )
+    ))
+  }
+
+  scores <- list(stabilization_score(x), stabilization_score(to))
+  if (
+    !identical(problem, psw_type_field_problems[["stabilization_score"]]) ||
+      !any(lengths(scores) > 1)
+  ) {
+    return(problem)
+  }
+
+  c(
+    problem,
+    i = paste(
+      "The value's per-observation `stabilization_score` does not match the",
+      "target's, and a score describes the units of the weights that carry it."
+    ),
+    i = paste(
+      "Assign `vec_data()` of the value to keep the target's score, or rebuild",
+      "the weights once the values are assigned."
+    )
+  )
 }
 
 #' @export
@@ -1757,5 +2354,5 @@ vec_cast.psw.ps_trunc <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.ps_trunc.psw <- function(x, to, ...) {
-  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+  cast_to_unbounded_ps_trunc(vec_data(x))
 }

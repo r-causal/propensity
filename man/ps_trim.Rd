@@ -6,13 +6,15 @@
 \usage{
 ps_trim(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal", "density", "resid"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -20,11 +22,12 @@ ps_trim(
 }
 \arguments{
 \item{.propensity}{A numeric vector of propensity scores in (0, 1) for binary
-exposures, or a matrix / data frame where each column gives the propensity
-score for one level of a categorical exposure. A data frame trimmed for a
-binary exposure is reduced to a single column: the second column of a two
-column data frame, which is the probability of the second level in the
-layout model predictions come in, and the first column otherwise. The
+exposures, a matrix / data frame where each column gives the propensity
+score for one level of a categorical exposure, or a fitted model (see
+\strong{Fitted models} and \strong{Trimming a dose model} in Details). A data frame trimmed
+for a binary exposure is reduced to a single column: the second column of
+a two column data frame, which is the probability of the second level in
+the layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
 announcement. A matrix is held to the same open interval as a vector, so a
 score of exactly 0 or 1 in any cell is refused and a separated multinomial
@@ -45,7 +48,10 @@ observations where \emph{any} column falls below \code{lower} (the symmetric
 threshold delta) are trimmed.
 \item \strong{\code{"adaptive"}}: Data-driven threshold that minimizes the asymptotic
 variance of the IPW estimator (Crump et al., 2009). The \code{lower} and
-\code{upper} arguments are ignored.
+\code{upper} arguments are ignored. The threshold adapts to the estimated
+scores, tightening under poor overlap, and the estimand becomes the
+population it keeps. \code{ps_trunc(method = "adaptive")} instead adapts to
+the sample size alone and keeps every unit.
 \item \strong{\code{"pctl"}}: Quantile-based. Observations outside the \verb{[lower, upper]}
 quantiles of the propensity score distribution are trimmed. Defaults:
 \code{lower = 0.05}, \code{upper = 0.95}.
@@ -65,7 +71,22 @@ the same data with an error of class \code{propensity_no_overlap_error}
 because there is no range left to bound the scores to.
 \item \strong{\code{"optimal"}}: Multi-category optimal trimming (Yang et al., 2016).
 Categorical exposures only. Requires \code{.exposure}.
+\item \strong{\code{"density"}}: Quantile floor on the conditional density of a
+continuous exposure. Units whose conditional density at their observed
+dose falls below its \code{lower} quantile are trimmed. Default:
+\code{lower = 0.01}.
+\item \strong{\code{"resid"}}: Bound on the absolute standardized residual of a
+continuous exposure. Units more than \code{upper} spreads from their
+predicted dose are trimmed. \code{upper} has no default.
 }
+
+\code{"density"} and \code{"resid"} need the residuals and the family of the model
+that fit the exposure's conditional mean, so they accept only a dose model
+(see \strong{Trimming a dose model} in Details). They refuse a vector or matrix of values,
+a binomial or quasibinomial \code{glm}, and a \code{multinom} with an error of class
+\code{propensity_method_error}. A dose model accepts only these two methods, and
+refuses every other one, including the default \code{"ps"} when \code{method} is not
+supplied, with the same class.
 
 For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 
@@ -74,21 +95,28 @@ For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 \itemize{
 \item \code{"ps"}: absolute propensity score bounds (defaults: 0.1, 0.9). For
 categorical exposures, only \code{lower} is used, as the symmetric threshold
-delta, and it defaults to 0.1. That default deliberately differs from the
-0.01 threshold \code{\link[=ps_trunc]{ps_trunc()}} uses for categorical exposures: trimming
-discards the units it selects, so its default follows common-support
-trimming practice, whereas truncation keeps every unit and only pins the
-most extreme scores back. With \code{k} exposure levels, a threshold of \code{1/k}
-or larger cannot be met by every column of a row that sums to one, and is
-an error.
+delta, and it defaults to 0.1, the default \code{\link[=ps_trunc]{ps_trunc()}} uses as well.
+With \code{k} exposure levels, a threshold of \code{1/k} or larger cannot be met by
+every column of a row that sums to one, and is an error.
 \item \code{"pctl"}: quantile probabilities (defaults: 0.05, 0.95).
 \item \code{"pref"}: preference score bounds (defaults: 0.3, 0.7).
 \item \code{"adaptive"}, \code{"cr"}, \code{"optimal"}: ignored (thresholds are data-driven).
-}}
+\item \code{"density"}: \code{lower} is the quantile probability of the floor, in
+(0, 0.5) (default 0.01). \code{upper} is refused with an error of class
+\code{propensity_unsupported_arg_error}.
+\item \code{"resid"}: \code{upper} is the bound on the absolute standardized residual, a
+single positive finite number, and is required (an error of class
+\code{propensity_missing_arg_error} without it). \code{lower} is refused with an
+error of class \code{propensity_unsupported_arg_error}.
+}
+
+A \code{"density"} \code{lower} or \code{"resid"} \code{upper} out of range is refused with an
+error of class \code{propensity_range_error}.}
 
 \item{.exposure}{An exposure variable. Required for \code{"pref"}, \code{"cr"} (binary
-vector), and \code{"optimal"} (factor or character). Not required for other
-methods.}
+vector), and \code{"optimal"} (factor or character). For \code{"density"} and
+\code{"resid"}, the dose is read from the model's response unless supplied here.
+Not required for other methods.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group, used by \code{"pref"} and \code{"cr"}. Every binary coding honors
@@ -107,6 +135,24 @@ the same consequence for \code{.propensity}, and a level the exposure never
 takes is an error. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
+
+\item{.sigma}{For \code{"density"} and \code{"resid"}, a single residual spread to
+read the conditional density at, recorded as \code{"supplied"}. With none
+supplied, the spread is the one the density family estimates from the
+residuals, as in \code{\link[=wt_ate]{wt_ate()}}: the root mean square, unless the family
+estimates a scale of its own. A spread for each unit is refused with an
+error of class \code{propensity_sigma_error}, and a spread supplied with a
+family that estimates its own scale is refused with an error of class
+\code{propensity_density_error}. The other methods refuse any \code{.sigma} with an
+error of class \code{propensity_sigma_error}.}
+
+\item{.density}{For \code{"density"} and \code{"resid"}, the family of the conditional
+density, in any form \code{\link[=wt_ate]{wt_ate()}} accepts: \code{"normal"} (the default),
+\code{"laplace"}, \code{"kernel"}, a specification such as \code{\link[=dens_t]{dens_t()}}, or a function
+of the standardized residual. \code{"resid"} accepts only \code{\link[=dens_normal]{dens_normal()}},
+\code{\link[=dens_t]{dens_t()}}, and \code{\link[=dens_laplace]{dens_laplace()}}, and refuses a kernel or user-written
+density with an error of class \code{propensity_density_error}. The other
+methods refuse any family but the normal with the same class.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
@@ -129,7 +175,17 @@ with \code{\link[=ps_trim_meta]{ps_trim_meta()}}. Key fields include:
 \item Method-specific fields such as \code{cutoff} (adaptive), \code{q_lower}/\code{q_upper}
 (pctl), \code{cr_lower}/\code{cr_upper} (cr), \code{delta} (categorical ps),
 or \code{lambda} (optimal)
+\item \code{focal_inverted} (vector scores only): \code{TRUE} when the scores are one
+minus the probability a fitted model reports, because the model was
+trimmed with its first level named as focal, and \code{FALSE} otherwise,
+including for every vector of scores supplied directly
 }
+
+A trim of a dose model records \code{method}, \code{lower} (\code{"density"}, else
+\code{NULL}), \code{upper} (\code{"resid"}, else \code{NULL}), \code{threshold} (the realized floor
+on the conditional density), \code{sigma} (the spread it was read at),
+\code{sigma_kind} (\code{"pooled"}, \code{"mle"}, or \code{"supplied"}), \code{density} (the
+density specification), \code{keep_idx}, \code{trimmed_idx}, and \code{n_obs}.
 }
 \description{
 Trim observations with extreme propensity scores by replacing them with \code{NA},
@@ -161,7 +217,14 @@ equipoise based on the preference score.
 groups have observed propensity scores.
 \item Use \code{"optimal"} for multi-category (3+) exposures; this is the only
 data-driven method available for categorical treatments.
+\item Use \code{"density"} or \code{"resid"} for a continuous exposure, on its dose model.
 }
+
+For a binary or categorical exposure, trimming and refitting is the first
+recourse when the analysis can accept a change of estimand. When every unit
+must be kept, bound the scores with \code{\link[=ps_trunc]{ps_trunc()}} instead, for a binary
+exposure with \code{method = "adaptive"}, or bound the weights with
+\code{\link[=wt_trunc]{wt_trunc()}}.
 }
 
 \subsection{Typical workflow}{
@@ -188,6 +251,79 @@ silences the announcement. An \code{.exposure} you supply is used instead, and a
 categorical model's columns are matched to its levels by name, so an exposure
 whose levels are ordered differently is still trimmed against the right
 column.
+}
+
+\subsection{Trimming a dose model}{
+
+For a continuous exposure, \code{.propensity} can be the model of the exposure's
+conditional mean: a \code{\link[stats:lm]{stats::lm()}}, a \code{glm} of the \code{gaussian()} family (or
+another family whose variance is constant), a \code{MASS::rlm()}, or an
+\code{mgcv::gam()}, the models \code{\link[=wt_ate]{wt_ate()}} reads a dose from. A \code{glm} whose spread
+changes with its mean, such as \code{poisson()}, is refused with an error of
+class \code{propensity_model_family_error}. Only \code{"density"} and \code{"resid"} apply.
+
+For a dose, the generalized propensity score is the conditional density
+\eqn{f(a \mid x)} (Hirano and Imbens, 2004), and a unit whose observed dose
+has a small conditional density gets a large weight, as a unit with a
+propensity score near 0 does for a binary exposure. Both methods read the
+fitted conditional mean \code{mu}, the spread \code{sigma} of the residuals under the
+family in \code{.density}, the standardized residual \code{z = (a - mu) / sigma}, and
+the conditional density \code{f = g(z) / sigma}, where \code{g} is the family's
+standardized density. \code{"density"} keeps the units whose \code{f} is at least its
+\code{lower} quantile. \code{"resid"} keeps those whose \verb{|z|} is at most \code{upper}; for
+the symmetric unimodal families it accepts, that is the floor
+\code{g(upper) / sigma} on \code{f}, which is the threshold it records. The trim is
+one-sided, at the low end of the density, since only a small density makes
+a large weight (Branson et al., 2024).
+
+The retained values are the conditional means, and the trimmed ones are
+\code{NA}. A unit with a missing mean or dose takes no part in the trim.
+\code{.focal_level}, \code{.reference_level}, and their deprecated forms are refused
+with an error of class \code{propensity_focal_level_error}, since a dose has no
+levels.
+
+A trim changes the estimand. The analysis describes the units whose
+observed dose was plausible under the model, not the full sample, and which
+units those are depends on the threshold. Branson et al. (2024) define the
+trimmed dose response at each dose among the units whose conditional
+density at that dose exceeds the threshold, a population that changes with
+the dose; this trim is its sample analogue at each unit's own observed dose
+rather than the same population. A dose-response curve fit to the trimmed
+sample is a curve for the units it keeps.
+
+After trimming, \code{\link[=ps_refit]{ps_refit()}} refits the conditional mean on the retained
+rows and re-estimates the spread there under the recorded family, and
+\code{\link[=wt_ate]{wt_ate()}} builds the weights from the refit under the family and spread
+the record holds. \code{\link[=ipw]{ipw()}} refuses those weights, as it refuses every
+weight built from a trimmed score.
+
+The other way to hold down extreme weights for a dose is \code{\link[=wt_trunc]{wt_trunc()}},
+which bounds the weights and keeps every unit; see \strong{Truncating weights or
+trimming the density} there for the simulation results behind this
+summary. With a density family that fits the residuals, a density trim at
+\code{lower = 0.01} did not help: at an effective sample size of 64\% of the
+sample, its interval covered 0.843, against 0.933 for the untrimmed
+weights under the same fixed-weight interval. A loose bound on the weights
+left that coverage where it was and lowered the root mean squared error.
+With heavy-tailed residuals read through a normal density, or a residual
+spread the model left out, the trim covered 0.979 to 0.989, against 0.618
+to 0.881 for the untrimmed weights and 0.644 to 0.906 for the bound,
+because it removed the units the misspecified density fit worst. Two
+cautions go with those numbers. The trim's intervals were computed on the
+trimmed sample, held the weights fixed, and were conservative, and its bias
+was measured against the effect in the full population, so part of that
+bias is the change of estimand. \code{"resid"} was not simulated; the results
+carry over to it only because a bound on the standardized residual is a
+floor on the conditional density.
+
+A family that fits the residuals is the better repair where it applies.
+Under heavy tails, \code{\link[=dens_t]{dens_t()}} with 4 degrees of freedom at its default
+scale had about a third of the root mean squared error of the bounded
+normal weights and an M-estimation interval that covered 0.926 to 0.939
+with standard errors close to right, and it kept every unit. The trim's
+coverage was higher, but its interval was conservative. Check the family
+first; trim when the units at the low-density end are ones the analysis
+should not describe, and say so when reporting the estimand.
 }
 
 \subsection{Object behavior}{
@@ -237,29 +373,49 @@ undefined. Remove or impute the missing exposure values first.
 A \code{ps_trim} records which units were trimmed as positions among the
 observations it was written for, along with how many observations that was.
 Operations that hand this package the subscript re-index those positions onto
-the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, \code{\link[=rep]{rep()}}, and
-\code{\link[=na.omit]{na.omit()}} all return a record written for what they return, and a subscript
-naming a position more than once reports that unit at every place it now
-holds.
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=rep]{rep()}}, and \code{\link[=na.omit]{na.omit()}} all
+return a record written for what they return, and a subscript naming a
+position more than once reports that unit at every place it now holds.
+\code{\link[=unique]{unique()}} does the same when it can, as described below.
 
 Operations that change how many observations there are without supplying a
 subscript cannot re-index the record, and it is dropped rather than worked
 out from the values, since reading membership back from the \code{NA} pattern
 would report a propensity score that arrived missing as one this package
 removed. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}}, which is how filtering, joining, and grouped
-summaries in dplyr reach a column, is the usual route, and dropping the
-record there raises a warning of class \code{propensity_trim_record_warning}.
-Combining with \code{\link[=c]{c()}} drops it without comment, because concatenation appends
-one set of observations to another and the prototype it builds the result
-from holds no positions to lose. The values, the class, and the method and
-its cutoffs are untouched either way.
+verbs in dplyr reach a column, is the usual route, and combining two or more
+vectors with \code{\link[=c]{c()}} is another, because concatenation appends one set of
+observations to another. The record is dropped without comment on every
+route: most of these length changes build vectors the caller never holds,
+such as the pieces a grouped verb slices a column into or the rows a tibble
+slices off to print, so a warning would mostly describe something that is not
+the result. The values, the class, and the method and its cutoffs are
+untouched.
 
-Printing a \code{ps_trim} column inside a tibble takes the same route: a tibble
-prints the first few rows and slices the column to get them, so a column
-longer than what is shown raises the record-drop warning as it is printed.
-The warning is truthful, and it describes the vector built for the display
-rather than the column, which is unchanged. Print \code{as.numeric()} of the
-column, or widen the print with \code{options(pillar.print_max)}, to avoid it.
+A combine drops the positions even when it is handed a single vector. \code{c()}
+of one \code{ps_trim} returns it unchanged, record included, but
+\code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)}, and an
+ungrouped \code{dplyr::reframe()} rebuild the column, so a later \code{\link[=ps_refit]{ps_refit()}} or
+\code{\link[=is_unit_trimmed]{is_unit_trimmed()}} on the result refuses it.
+
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
+distinct row of a matrix of scores, and that element or row stands for every
+unit holding the same scores. A matrix comes back as a matrix of the same
+class with its column names. The record is re-indexed onto the result when
+all of the merged units share one status, and dropped otherwise: a trimmed
+score and one that arrived missing are both \code{NA}, and a trimmed row is \code{NA}
+throughout, so a vector or matrix holding both returns a single \code{NA} element
+or row that neither status describes.
+
+\code{\link[=as.data.frame]{as.data.frame()}} and \code{tibble::as_tibble()} turn a matrix of scores into a
+data frame whose columns are \code{ps_trim} vectors carrying the matrix's record, one
+row per unit, so the weight functions read the data frame as they read the
+matrix and a subset of its rows re-indexes the record. A data frame whose
+columns are not all trimmed with the same record is refused by the weight
+functions with an error of class \code{propensity_matrix_type_error}. A matrix
+without column names gives columns named \code{V1}, \code{V2}, and so on, which the
+weight functions then refuse because they name no exposure level, so name
+the columns after the exposure levels before converting.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it
@@ -269,15 +425,16 @@ class \code{propensity_missing_meta_error} when it does not, rather than name
 trimmed units at stale positions.
 
 That check compares how many observations the record was written for against
-how many the object holds, which a reordering does not change. An operation
-that reorders the observations through vctrs, rather than through \code{[},
-therefore keeps a record written for the order they used to be in:
-\code{vctrs::vec_slice(x, 5:1)} and \code{dplyr::arrange()} both return the values in
-a new order under positions still naming the old one. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}}
-answers from those positions and names the wrong units, and \code{\link[=ps_refit]{ps_refit()}}
-refits on the wrong rows. Subsetting with \code{[} is handed the subscript and
-re-indexes, so reorder with \code{[}, or put the propensity scores in the order
-you want before trimming them.
+how many the object holds, which a reordering does not change, so a route
+that could reorder the observations without saying how drops the positions
+instead, at any length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()},
+\code{dplyr::filter()}, and \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}} and the helpers built on it
+return a \code{ps_trim} whose record keeps its method and cutoffs and names no
+units, and \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and \code{\link[=ps_refit]{ps_refit()}} refuse it. Subsetting with
+\code{[}, \code{sort()}, \code{unique()}, and \code{rep()} know where the units went and
+re-index the record, and \verb{[<-} and \verb{is.na<-} move no unit and keep it, so
+reorder with \code{[}, or put the propensity scores in the order you want before
+trimming them.
 
 Casting a numeric vector into a \code{ps_trim} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
 operation and not a trimming. The result is described by the method and
@@ -315,6 +472,12 @@ wt_ate(refitted, .exposure = z)
 # Trim the scores a fitted model reports, reading the exposure off the model
 ps_trim(fit, method = "cr")
 
+# Trim a dose model on the scale of its conditional density
+dose <- 1 + 0.5 * x + rt(n, df = 3)
+dose_fit <- lm(dose ~ x)
+ps_trim(dose_fit, method = "density", lower = 0.05)
+ps_trim(dose_fit, method = "resid", upper = 3, .density = dens_t(4))
+
 if (rlang::is_installed("nnet")) {
   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
   multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
@@ -323,9 +486,17 @@ if (rlang::is_installed("nnet")) {
 
 }
 \references{
+Branson, Z., Kennedy, E. H., Balakrishnan, S., & Wasserman, L. (2024).
+Causal effect estimation after propensity score trimming with continuous
+treatments. \emph{arXiv preprint} arXiv:2309.00706.
+
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 with limited overlap in estimation of average treatment effects.
 \emph{Biometrika}, 96(1), 187--199.
+
+Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
+treatments. In \emph{Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives} (pp. 73--84).
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.

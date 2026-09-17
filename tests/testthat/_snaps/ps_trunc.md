@@ -116,7 +116,37 @@
       expr
     Condition <propensity_method_error>
       Error in `ps_trunc()`:
-      ! No method for objects of class lm
+      ! No method for objects of class not_a_model
+
+# ps_trunc() refuses a model of a dose and names the routes that work
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_trunc()`:
+      ! Truncation needs a model of the probability of the exposure.
+      x `.propensity` is <lm>, whose fitted values are conditional means rather than probabilities.
+      i A continuous exposure has no propensity score to bound. To set aside the units whose dose is implausible under the model, trim the dose model with `ps_trim(method = "density")`; to hold down extreme weights while keeping every unit, build them with `wt_ate()` and bound them with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_trunc()`:
+      ! Truncation needs a model of the probability of the exposure.
+      x `.propensity` was fit with `gaussian()`, whose fitted values are conditional means rather than probabilities.
+      i A continuous exposure has no propensity score to bound. To set aside the units whose dose is implausible under the model, trim the dose model with `ps_trim(method = "density")`; to hold down extreme weights while keeping every unit, build them with `wt_ate()` and bound them with `wt_trunc()`.
+
+# ps_trunc() refuses a robust linear model of a dose
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_trunc()`:
+      ! Truncation needs a model of the probability of the exposure.
+      x `.propensity` is <rlm>, whose fitted values are conditional means rather than probabilities.
+      i A continuous exposure has no propensity score to bound. To set aside the units whose dose is implausible under the model, trim the dose model with `ps_trim(method = "density")`; to hold down extreme weights while keeping every unit, build them with `wt_ate()` and bound them with `wt_trunc()`.
 
 # ps_trunc() refuses scores that are not numbers
 

@@ -34,6 +34,15 @@
       ! Method "pctl" is not supported for categorical exposures.
       i Use "ps" or "optimal".
 
+# ps_trim refuses the density method for a matrix of scores
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! Method "density" is not supported for categorical exposures.
+      i Use "ps" or "optimal".
+
 # ps_trim requires exposure for categorical
 
     Code

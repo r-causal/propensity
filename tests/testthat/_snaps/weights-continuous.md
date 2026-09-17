@@ -68,6 +68,126 @@
       x `.propensity` is <mlm>, a fit of 2 responses, whose fitted values are 60 by 2.
       i Fit the exposure on its own, or pass the conditional means of this exposure to `.propensity` as a numeric vector.
 
+# a density does not reach the weights through a modified score
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from trimmed propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trim()` trimmed were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from truncated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trunc()` truncated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from calibrated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_calibrate()` calibrated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+# censoring weights do not carry a density through a modified score
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from trimmed propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trim()` trimmed were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from truncated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trunc()` truncated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from calibrated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_calibrate()` calibrated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
+# a modified score in a data frame is refused for a continuous exposure
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from trimmed propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trim()` trimmed were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from truncated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trunc()` truncated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be built from calibrated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_calibrate()` calibrated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_ate()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from trimmed propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trim()` trimmed were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from truncated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_trunc()` truncated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_modified_continuous_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure cannot be built from calibrated propensity scores.
+      x A continuous exposure has no propensity score, so the values `ps_calibrate()` calibrated were conditional means rather than probabilities.
+      i Trim the dose model itself with `ps_trim(method = "density")`, or build weights from the dose model with `wt_cens()` and hold down extreme weights with `wt_trunc()`.
+
 # an infinite exposure or fitted value is refused where it arrives
 
     Code
@@ -187,7 +307,7 @@
     Condition <propensity_density_error>
       Error in `wt_ate()`:
       ! `sigma_method = "mle"` cannot be used with `.sigma`.
-      x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
+      x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the model of the exposure, and `.sigma` is a spread of your own that replaces it.
       i A "t" density is spread by its own estimator unless you ask for another, so `sigma_method = "mle"` is what it carries whether or not you wrote it.
       i Drop `.sigma` to estimate the scale under the "t" density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
 
@@ -198,7 +318,7 @@
     Condition <propensity_density_error>
       Error in `wt_ate()`:
       ! The scale of a "t" density cannot be estimated by maximum likelihood from these residuals.
-      x 9 of the 10 residuals of the propensity score model are exactly zero, and with 4 degrees of freedom that leaves the likelihood no maximum at a positive scale.
+      x 9 of the 10 residuals of the model of the exposure are exactly zero, and with 4 degrees of freedom that leaves the likelihood no maximum at a positive scale.
       i Use `sigma_method = "rms"`, or supply a spread with `.sigma`.
 
 # the numerator model refusals read as the refusals they are

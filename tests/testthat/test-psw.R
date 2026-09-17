@@ -169,14 +169,16 @@ test_that("vec_cast from ps_trunc carries every metadata field of the psw protot
   expect_equal(stabilization_score(out), 0.42)
 })
 
-test_that("vec_cast keeps a per-observation stabilization score at a matching length", {
+test_that("vec_cast drops a prototype's per-observation score even at a matching length", {
+  # The score describes the units of the weights it was recorded on, not the
+  # data being cast.
   score <- c(0.51, 0.52, 0.53)
   to <- psw_cast_prototype(stabilization_score = score)
 
   out <- expect_no_warning(vec_cast(c(1, 2, 3), to = to))
 
   expect_s3_class(out, "psw")
-  expect_equal(stabilization_score(out), score)
+  expect_null(stabilization_score(out))
   expect_true(is_stabilized(out))
 })
 
@@ -552,7 +554,7 @@ test_that("psw works with ggplot2", {
 })
 
 # Weights built from a modified propensity score carry the modification's
-# record: `ps_trim_meta`, `ps_trunc_meta`, or `ps_calib_meta`. Those records are
+# record: `ps_trim_meta` or `ps_trunc_meta`. Those records are
 # indexed by observation, so where an operation goes through vctrs they are kept
 # whenever the weights come back at the length the record was written for,
 # dropped when they do not, and left alone at zero length.
@@ -713,8 +715,11 @@ test_that("a full-length psw subset keeps the trimming record", {
   expect_identical(ps_trim_meta(whole), meta)
   expect_identical(is_unit_trimmed(whole), c(TRUE, FALSE, FALSE, FALSE, TRUE))
 
+  # A slice is not handed to anything that knows its subscript, so even one
+  # that leaves every unit in place cannot vouch for the record's positions.
   sliced <- expect_silent(vec_slice(w, seq_along(w)))
-  expect_identical(ps_trim_meta(sliced), meta)
+  expect_positions_dropped(ps_trim_meta(sliced), meta)
+  expect_true(is_ps_trimmed(sliced))
 })
 
 test_that("length-preserving psw arithmetic keeps truncation and calibration records", {
@@ -731,34 +736,181 @@ test_that("length-preserving psw arithmetic keeps truncation and calibration rec
   expect_true(is_ps_calibrated(out))
 })
 
-test_that("shortening a psw drops the trimming record silently", {
+test_that("shortening a psw with `[` re-indexes the trimming record", {
   w <- trimmed_psw()
 
   sub <- expect_silent(w[1:2])
   expect_s3_class(sub, "psw")
   expect_length(sub, 2)
-  expect_null(ps_trim_meta(sub))
-  expect_null(attr(sub, "ps_trim_meta"))
-
-  # Everything that is not indexed by observation is untouched by the drop.
+  expect_identical(ps_trim_meta(sub)$n_obs, 2L)
+  expect_identical(is_unit_trimmed(sub), c(TRUE, FALSE))
   expect_true(is_ps_trimmed(sub))
   expect_identical(estimand(sub), "ate; trimmed")
-
-  sliced <- expect_silent(vec_slice(w, 1:2))
-  expect_null(ps_trim_meta(sliced))
-  expect_true(is_ps_trimmed(sliced))
 })
 
-test_that("shortening a psw drops truncation and calibration records silently", {
+test_that("shortening a psw by a slice drops the trimming record's positions silently", {
+  w <- trimmed_psw()
+
+  sliced <- expect_silent(vec_slice(w, 1:2))
+  expect_s3_class(sliced, "psw")
+  expect_length(sliced, 2)
+  expect_positions_dropped(ps_trim_meta(sliced), ps_trim_meta(w))
+
+  # Everything that is not indexed by observation is untouched by the drop.
+  expect_true(is_ps_trimmed(sliced))
+  expect_identical(estimand(sliced), "ate; trimmed")
+})
+
+test_that("shortening a psw re-indexes the truncation record through `[` and a slice drops it", {
   truncated <- truncated_psw()
+  meta <- ps_trunc_meta(truncated)
+
   sub <- expect_silent(truncated[1:2])
-  expect_null(ps_trunc_meta(sub))
+  expect_identical(ps_trunc_meta(sub)$n_obs, 2L)
+  expect_identical(is_unit_truncated(sub), is_unit_truncated(truncated)[1:2])
   expect_true(is_ps_truncated(sub))
 
+  sliced <- expect_silent(vec_slice(truncated, 1:2))
+  expect_positions_dropped(ps_trunc_meta(sliced), meta)
+  expect_true(is_ps_truncated(sliced))
+  expect_identical(ps_trunc_meta(truncated), meta)
+})
+
+# A calibration record names the curve the scores were calibrated with and
+# whether it was smoothed. It holds no positions, so like the categorical
+# attributes it means the same thing at any length.
+
+unsmoothed_calibrated_psw <- function() {
+  exposure <- c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  ps <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    exposure,
+    smooth = FALSE
+  )
+
+  wt_ate(ps, exposure, exposure_type = "binary", .focal_level = 1)
+}
+
+test_that("shortening a psw keeps the calibration record", {
   calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
   sub <- expect_silent(calibrated[1:2])
-  expect_null(ps_calib_meta(sub))
+  expect_identical(ps_calib_meta(sub), calib_meta)
   expect_true(is_ps_calibrated(sub))
+
+  sliced <- expect_silent(vec_slice(calibrated, c(3, 1, 1)))
+  expect_identical(ps_calib_meta(sliced), calib_meta)
+
+  repeated <- expect_silent(rep(calibrated, 2))
+  expect_identical(ps_calib_meta(repeated), calib_meta)
+})
+
+test_that("arithmetic on a shortened calibrated psw keeps the calibration record", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
+  sub <- calibrated[1:4]
+  out <- expect_silent(sub * sub)
+  expect_identical(ps_calib_meta(out), calib_meta)
+})
+
+test_that("combining calibrated psw objects keeps a calibration record they share", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
+  combined <- expect_silent(c(calibrated, calibrated[1:3]))
+  expect_length(combined, 13)
+  expect_identical(ps_calib_meta(combined), calib_meta)
+  expect_true(is_ps_calibrated(combined))
+
+  combined <- expect_silent(vec_c(calibrated))
+  expect_identical(ps_calib_meta(combined), calib_meta)
+
+  unchopped <- expect_silent(
+    list_unchop(list(calibrated[4:10], calibrated[1:3]))
+  )
+  expect_identical(ps_calib_meta(unchopped), calib_meta)
+
+  # Two separately built sets of weights describe the same calibration.
+  separate <- expect_silent(c(calibrated, calibrated_psw()))
+  expect_identical(ps_calib_meta(separate), calib_meta)
+})
+
+test_that("combining psw objects keeps a calibration record only one records", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+  unrecorded <- psw(
+    rep(1, 3),
+    estimand = estimand(calibrated),
+    calibrated = TRUE
+  )
+  attr(unrecorded, "exposure_type") <- attr(calibrated, "exposure_type")
+  expect_null(ps_calib_meta(unrecorded))
+
+  out <- expect_silent(c(calibrated, unrecorded))
+  expect_identical(ps_calib_meta(out), calib_meta)
+
+  out <- expect_silent(c(unrecorded, calibrated))
+  expect_identical(ps_calib_meta(out), calib_meta)
+})
+
+test_that("combining psw objects drops calibration records that disagree", {
+  smoothed <- calibrated_psw()
+  unsmoothed <- unsmoothed_calibrated_psw()
+  expect_false(
+    identical(ps_calib_meta(smoothed), ps_calib_meta(unsmoothed))
+  )
+
+  out <- collect_warning_classes(c(smoothed, unsmoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_s3_class(out$value, "psw")
+  expect_length(out$value, 20)
+  expect_null(ps_calib_meta(out$value))
+  expect_true(is_ps_calibrated(out$value))
+
+  # The drop is reported once and holds whatever order the inputs come in.
+  out <- collect_warning_classes(c(smoothed, unsmoothed, smoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+
+  out <- collect_warning_classes(c(smoothed, smoothed, unsmoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+})
+
+test_that("a psw product drops calibration records that disagree", {
+  out <- collect_warning_classes(calibrated_psw() * unsmoothed_calibrated_psw())
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+  expect_true(is_ps_calibrated(out$value))
+})
+
+test_that("a cast into a calibrated psw carries the calibration record", {
+  calibrated <- calibrated_psw()
+
+  cast <- expect_silent(vec_cast(c(1, 2, 3), vec_ptype(calibrated)))
+  expect_identical(ps_calib_meta(cast), ps_calib_meta(calibrated))
+})
+
+test_that("a ps_calib keeps its record at any length", {
+  calibrated <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  )
+  calib_meta <- ps_calib_meta(calibrated)
+
+  expect_identical(ps_calib_meta(calibrated[1:3]), calib_meta)
+  expect_identical(ps_calib_meta(vec_slice(calibrated, 1:3)), calib_meta)
+  expect_identical(ps_calib_meta(unique(calibrated)), calib_meta)
+  expect_identical(
+    ps_calib_meta(c(calibrated, calibrated[1:3])),
+    calib_meta
+  )
+  expect_identical(
+    ps_calib_meta(list_unchop(list(calibrated[4:10], calibrated[1:3]))),
+    calib_meta
+  )
 })
 
 test_that("a zero-length psw restore keeps the trimming record silently", {
@@ -782,22 +934,29 @@ test_that("a zero-length psw restore keeps the trimming record silently", {
   expect_identical(is_unit_trimmed(proto), logical(0))
 })
 
-test_that("shortening a psw with a score and a trimming record warns only for the score", {
+test_that("slicing a psw with a score and a trimming record warns only for the score", {
   score <- c(0.51, 0.52, 0.53, 0.54, 0.55)
   w <- trimmed_psw(stabilization_score = score)
   expect_identical(stabilization_score(w), score)
   expect_false(is.null(ps_trim_meta(w)))
 
-  out <- collect_warning_classes(w[1:2])
-
   # A user who recorded a score can recompute the weights on the subset, so that
-  # drop is worth saying. The trimming record has a query-time guard instead, and
-  # announcing it here would fire on every outcome model fit on these weights.
+  # drop is worth saying. The trimming record is either re-indexed or has a
+  # query-time guard instead, and announcing its drop would fire on every
+  # outcome model fit on these weights.
+  out <- collect_warning_classes(vec_slice(w, 1:2))
   expect_identical(out$classes, "propensity_stabilization_score_warning")
   expect_null(stabilization_score(out$value))
-  expect_null(ps_trim_meta(out$value))
+  expect_positions_dropped(ps_trim_meta(out$value), ps_trim_meta(w))
   expect_true(is_stabilized(out$value))
   expect_true(is_ps_trimmed(out$value))
+
+  # `[` places both, so it has nothing to announce.
+  out <- collect_warning_classes(w[1:2])
+  expect_identical(out$classes, character())
+  expect_identical(stabilization_score(out$value), score[1:2])
+  expect_identical(is_unit_trimmed(out$value), c(TRUE, FALSE))
+  expect_true(is_stabilized(out$value))
 })
 
 test_that("the trimmed flag survives operations that drop the trimming record", {
@@ -811,21 +970,21 @@ test_that("the trimmed flag survives operations that drop the trimming record", 
   expect_true(is_ps_trimmed(w[integer(0)]))
 })
 
-test_that("casting to a psw keeps a length-matched trimming record and drops a shorter one silently", {
+test_that("casting to a psw drops the trimming record's positions silently", {
   w <- trimmed_psw()
   meta <- ps_trim_meta(w)
 
+  # A cast takes its whole type from `to`, whose record describes `to`'s own
+  # observations rather than the incoming data, even at the same length. That
+  # is nothing the caller can act on, so the positions go without comment.
   matched <- expect_silent(vec_cast(c(1, 2, 3, 4, 5), to = w))
   expect_s3_class(matched, "psw")
-  expect_identical(ps_trim_meta(matched), meta)
+  expect_positions_dropped(ps_trim_meta(matched), meta)
 
-  # A cast takes its whole type from `to`, whose record describes `to`'s own
-  # observations rather than the incoming data. A length it does not match is
-  # nothing the caller can act on, so the record goes without comment.
   shorter <- expect_silent(vec_cast(c(1, 2), to = w))
   expect_s3_class(shorter, "psw")
   expect_length(shorter, 2)
-  expect_null(ps_trim_meta(shorter))
+  expect_positions_dropped(ps_trim_meta(shorter), meta)
 
   # Zero-length data takes the same exemption a per-observation score takes: it
   # lines up with nothing and so contradicts nothing, and the result is itself a
@@ -1410,13 +1569,13 @@ test_that("a psw product records an estimand only one operand names", {
   expect_null(estimand(expect_silent(unnamed * unnamed)))
 })
 
-test_that("combining psw objects drops the modification records", {
+test_that("combining psw objects drops the modification records' positions", {
   w <- trimmed_psw()
 
   out <- expect_silent(c(w, w))
   expect_s3_class(out, "psw")
   expect_length(out, 10)
-  expect_null(ps_trim_meta(out))
+  expect_positions_dropped(ps_trim_meta(out), ps_trim_meta(w))
 
   # Everything that is not indexed by observation survives the concatenation.
   expect_true(is_ps_trimmed(out))
@@ -1426,29 +1585,32 @@ test_that("combining psw objects drops the modification records", {
 
   truncated <- truncated_psw()
   combined <- expect_silent(c(truncated, truncated))
-  expect_null(ps_trunc_meta(combined))
+  expect_positions_dropped(ps_trunc_meta(combined), ps_trunc_meta(truncated))
   expect_true(is_ps_truncated(combined))
 
+  # The calibration record holds no positions, so it survives the
+  # concatenation.
   calibrated <- calibrated_psw()
   combined <- expect_silent(c(calibrated, calibrated))
-  expect_null(ps_calib_meta(combined))
+  expect_identical(ps_calib_meta(combined), ps_calib_meta(calibrated))
   expect_true(is_ps_calibrated(combined))
 })
 
-test_that("combining psw objects drops modification records that disagree without comment", {
+test_that("combining psw objects trimmed at different cutoffs downgrades to numeric", {
   w <- trimmed_psw()
   alt <- alt_trimmed_psw()
   expect_false(identical(ps_trim_meta(w), ps_trim_meta(alt)))
 
-  # Concatenation drops every modification record for a reason that has nothing
-  # to do with whether the inputs agree, so two that disagree leave nothing to
-  # report. A warning here would name a record the result would have lost had
-  # the two been identical.
-  out <- expect_silent(c(w, alt))
-  expect_s3_class(out, "psw")
+  # Weights from scores trimmed at different cutoffs target different
+  # estimands, so they have no common type, as for any other disagreement
+  # about how the weights were built.
+  expect_warning(
+    out <- c(w, alt),
+    class = "propensity_coercion_warning"
+  )
+  expect_false(is_psw(out))
+  expect_type(out, "double")
   expect_length(out, 10)
-  expect_null(ps_trim_meta(out))
-  expect_true(is_ps_trimmed(out))
 })
 
 test_that("combining psw objects carries categorical attributes the inputs share", {
@@ -1545,6 +1707,7 @@ test_that("the record of what an operation dropped stays off its result", {
       "trimmed",
       "truncated",
       "calibrated",
+      "wt_truncated",
       "class",
       "n_categories",
       "category_names",
@@ -1767,7 +1930,8 @@ test_that("an integer and a double stabilization score are the same score", {
 test_that("a psw prototype records a score for observations it does not hold", {
   # A zero-length psw carries metadata for observations that have not arrived,
   # so there is no length for a per-observation score to be checked against.
-  # `vec_cast()` checks it against the length the data does arrive at.
+  # Data cast to it is not the data the score was recorded for, so the score is
+  # not carried onto it at any length.
   score <- c(0.51, 0.52, 0.53)
   proto <- expect_silent(psw(
     double(),
@@ -1777,7 +1941,7 @@ test_that("a psw prototype records a score for observations it does not hold", {
   ))
 
   expect_identical(stabilization_score(proto), score)
-  expect_identical(stabilization_score(vec_cast(c(1, 2, 3), to = proto)), score)
+  expect_null(stabilization_score(vec_cast(c(1, 2, 3), to = proto)))
   expect_null(stabilization_score(vec_cast(c(1, 2), to = proto)))
 
   # The value checks apply to a prototype like anything else.

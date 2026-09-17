@@ -2168,13 +2168,13 @@ test_that("linearization rejects stabilized weights whose score was dropped", {
     stabilization_score = score
   )
 
-  # Slicing a psw drops a per-observation score it can no longer align, and says
-  # so, but leaves the weights marked stabilized. That is the state below: the
+  # A slice that cannot place a per-observation score drops it, and says so,
+  # but leaves the weights marked stabilized. That is the state below: the
   # values are still the score-stabilized ones, and nothing records which score
   # produced them.
   sliced <- NULL
   expect_warning(
-    sliced <- wts[1:200],
+    sliced <- vctrs::vec_slice(wts, 1:200),
     class = "propensity_stabilization_score_warning"
   )
   expect_true(is_stabilized(sliced))

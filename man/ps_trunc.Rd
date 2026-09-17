@@ -6,7 +6,7 @@
 \usage{
 ps_trunc(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -38,12 +38,16 @@ returns when no prediction type is named, carries predicted levels rather
 than probabilities and is refused with an error of class
 \code{propensity_df_class_column_error}.}
 
-\item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
+\item{method}{One of \code{"ps"}, \code{"adaptive"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
 \item \code{"ps"} (default): Truncate directly on propensity score values. Values
 outside \verb{[lower, upper]} are set to the nearest bound. For categorical
 exposures, applies symmetric truncation using \code{lower} as the threshold
 (delta) and renormalizes rows to sum to 1.
+\item \code{"adaptive"}: Truncate at \eqn{[1/c, 1 - 1/c]} with
+\eqn{c = \sqrt{n} \log(n) / 5} (Gruber et al., 2022), where \eqn{n} is
+the number of propensity scores present (binary exposures only). See
+\strong{The adaptive bound} below.
 \item \code{"pctl"}: Truncate at quantiles of the propensity score distribution.
 The \code{lower} and \code{upper} arguments specify quantile probabilities. For
 categorical exposures, quantiles are computed across all columns.
@@ -61,15 +65,10 @@ For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
 
 \item{lower, upper}{Bounds for truncation. Interpretation depends on \code{method}:
 \itemize{
-\item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
-categorical exposures, \code{lower} is the truncation threshold delta
-(default: 0.01) and \code{upper} is ignored. That default deliberately differs
-from the 0.1 threshold \code{\link[=ps_trim]{ps_trim()}} uses for categorical exposures:
-truncation keeps every unit and only pins the most extreme scores back to
-the threshold, so its default is a gentle winsorization, whereas trimming
-discards the units it selects and follows common-support trimming
-practice. With \code{k} exposure levels, a threshold of \code{1/k} or larger cannot
-be met by every column of a row that sums to one, and is an error.
+\item \code{method = "adaptive"}: Not used. Supplying either is ignored with a
+warning.
+\item \code{method = "ps"}: Propensity score values. See \strong{The \code{"ps"} bounds}
+below.
 \item \code{method = "pctl"}: Quantile probabilities (defaults: 0.05 and 0.95;
 categorical defaults: 0.01 and 0.99).
 \item \code{method = "cr"}: Ignored; bounds are determined by the data.
@@ -132,6 +131,69 @@ For \strong{binary exposures}, each propensity score \eqn{e_i} is bounded:
 
 For \strong{categorical exposures}, values below the threshold are set to the
 threshold and each row is renormalized to sum to 1.
+\subsection{The \code{"ps"} bounds}{
+
+With \code{method = "ps"}, both paths default to a floor of 0.1. For a \strong{binary
+exposure}, each bound supplied must be a single number strictly between 0
+and 1, and a bound supplied alone implies its mirror: \code{lower} alone bounds
+the scores at \verb{[lower, 1 - lower]}, and \code{upper} alone at
+\verb{[1 - upper, upper]}. With neither supplied, the bounds are \verb{[0.1, 0.9]};
+with both supplied, both are used as written, so an asymmetric bound must be
+given in full. The mirror follows from the weights: an untreated unit's ATE
+weight is \eqn{1/(1 - e)}, so a floor on \eqn{e} alone would bound the
+treated weights and leave the untreated ones unbounded. A lone \code{lower} of
+0.5 or more, or a lone \code{upper} of 0.5 or less, meets or crosses its own
+mirror and is an error of class \code{propensity_range_error}. \code{lower = 1/c} gives the bounds
+\code{method = "adaptive"} computes for the same \eqn{c}.
+
+For a \strong{categorical exposure}, \code{lower} is the threshold \eqn{\delta}
+(default 0.1) applied to every column, after which each row is renormalized,
+and \code{upper} is not read and is recorded as \code{NA}. With \code{k} exposure levels, a
+threshold of \code{1/k} or larger cannot be met by every column of a row that
+sums to one and is an error, so an exposure with ten or more levels needs an
+explicit \code{lower} below \code{1/k}.
+}
+
+\subsection{The adaptive bound}{
+
+\code{method = "adaptive"} bounds a binary propensity score at
+\eqn{[1/c, 1 - 1/c]}, where \eqn{c = \sqrt{n} \log(n) / 5} is the weight
+bound of Gruber et al. (2022) and \eqn{n} counts the scores that are present,
+as in \code{\link[=wt_trunc]{wt_trunc()}}. At \eqn{n = 1000}, \eqn{c} is 43.7 and the bounds are
+0.023 and 0.977. The bound adapts to the sample size alone, loosening as
+\eqn{n} grows, and leaves the estimand alone. \code{ps_trim(method = "adaptive")}
+instead adapts to the estimated scores, tightening under poor overlap, and
+changes the estimand to the population it keeps.
+
+For \strong{unstabilized ATE weights} the bound is the weight bound written on the
+score scale. A treated unit's weight is \eqn{1/e}, so the floor \eqn{1/c}
+caps the treated weights at \eqn{c}; an untreated unit's weight is
+\eqn{1/(1 - e)}, so the ceiling \eqn{1 - 1/c} caps the untreated weights at
+\eqn{c}. \code{wt_ate()} on the result therefore gives the weights
+\code{wt_trunc(wt_ate(ps, .exposure), method = "adaptive")} gives, with one
+difference, provided every unit's exposure is observed. (A unit with a
+present score and a missing exposure counts toward \eqn{n} here but has no
+weight for \code{\link[=wt_trunc]{wt_trunc()}} to count, so the two bounds then differ.) The
+difference is this: a treated unit above \eqn{1 - 1/c} or an untreated unit below
+\eqn{1/c}, whose weight is already close to 1, is moved to that bound too,
+and its weight rises to \eqn{c / (c - 1)}. Every weight above
+\eqn{c / (c - 1)} is the same under either route. A lower bound alone would
+not do the same work, since no floor on \eqn{e} bounds an untreated unit's
+weight.
+
+For \strong{stabilized ATE weights} the equivalence does not carry over as it
+stands. Stabilizing multiplies each arm's weights by that arm's prevalence,
+so the treated weights are capped at \eqn{P(A = 1) c} and the untreated
+weights at \eqn{P(A = 0) c}, which agree only when the two arms are equally
+common.
+
+The bounds cross when \eqn{c < 2}, which holds for fewer than 15 scores, so
+\code{"adaptive"} needs at least 15 scores present and raises an error of class
+\code{propensity_range_error} otherwise. It is refused for categorical exposures
+with an error of class \code{propensity_method_error}: truncating a categorical
+score renormalizes each row, which moves scores the bound never reached, so
+the bound no longer caps the weights. A two-level \code{nnet::multinom()} fit is
+read as one binary score and accepted.
 
 \strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trunc} objects return
 plain numeric vectors. Once propensity scores are transformed (e.g., into
@@ -140,13 +202,24 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+}
+
 \subsection{Fitted models}{
 
 \code{.propensity} can be the fitted propensity score model instead of the scores
 it reports. A binomial \code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()} are
 read as one score per unit; a \code{nnet::multinom()} of three or more levels is
 read as one column per level. Those are the shapes \code{predict(fit, type = "response")} and \code{fitted(fit)} give, and truncating a fit bounds exactly what
-bounding those values would.
+bounding those values would. A model of a continuous exposure's conditional
+mean, such as a \code{\link[stats:lm]{stats::lm()}} fit or a gaussian \code{\link[stats:glm]{stats::glm()}}, has no
+propensity score to bound and raises an error of class
+\code{propensity_model_family_error}. A dose has two routes instead: trim the
+dose model with \code{ps_trim(method = "density")}, which sets aside the units
+whose dose is implausible under the model, or build the weights with
+\code{\link[=wt_ate]{wt_ate()}} and bound them with \code{\link[=wt_trunc]{wt_trunc()}}, which keeps every unit. There
+is no density method here: a floor on a dose's conditional density is a
+bound on its unstabilized weights, the ones \code{wt_ate(stabilize = FALSE)}
+builds, which \code{\link[=wt_trunc]{wt_trunc()}} already applies.
 
 The methods that read an exposure (\code{"cr"}, and every method on the
 categorical route) take it from the model when \code{.exposure} is not supplied,
@@ -183,21 +256,46 @@ Remove or impute the missing exposure values first.
 A \code{ps_trunc} records which units were winsorized as positions among the
 observations it was written for, along with how many observations that was.
 Operations that hand this package the subscript re-index those positions onto
-the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, and \code{\link[=rep]{rep()}} all return
-a record written for what they return, and a subscript naming a position more
-than once reports that unit at every place it now holds.
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, and \code{\link[=rep]{rep()}} all return a record
+written for what they return, and a subscript naming a position more than
+once reports that unit at every place it now holds. \code{\link[=unique]{unique()}} does the same
+when it can, as described below.
 
 Operations that change how many observations there are without supplying a
 subscript cannot re-index the record, and it is dropped rather than worked
 out from the values, since a score that arrived equal to a bound is
 indistinguishable from one this function pinned there. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}},
-which is how filtering, joining, and grouped summaries in dplyr reach a
-column, is the usual route, and dropping the record there raises a warning
-of class \code{propensity_trunc_record_warning}. Combining with \code{\link[=c]{c()}} drops it
-without comment, because concatenation appends one set of observations to
-another and the prototype it builds the result from holds no positions to
-lose. The values, the class, and the method and its bounds are untouched
-either way.
+which is how filtering, joining, and grouped verbs in dplyr reach a column,
+is the usual route, and combining two or more vectors with \code{\link[=c]{c()}} is another,
+because concatenation appends one set of observations to another. The record
+is dropped without comment on every route, since most of these length changes
+build vectors the caller never holds, such as the pieces a grouped verb
+slices a column into. The values, the class, and the method and its bounds
+are untouched.
+
+A combine drops the positions even when it is handed a single vector. \code{c()}
+of one \code{ps_trunc} returns it unchanged, record included, but
+\code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)}, and an
+ungrouped \code{dplyr::reframe()} rebuild the column, so a later
+\code{\link[=is_unit_truncated]{is_unit_truncated()}} on the result refuses it.
+
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
+distinct row of a matrix of scores, and that element or row stands for every
+unit holding the same scores. A matrix comes back as a matrix of the same
+class with its column names. The record is re-indexed onto the result when
+all of the merged units share one status, and dropped otherwise: a score or
+row that arrived where truncation would put it and one truncation moved
+there merge into a single element or row that neither status describes.
+
+\code{\link[=as.data.frame]{as.data.frame()}} and \code{tibble::as_tibble()} turn a matrix of scores into a
+data frame whose columns are \code{ps_trunc} vectors carrying the matrix's record, one
+row per unit, so the weight functions read the data frame as they read the
+matrix and a subset of its rows re-indexes the record. A data frame whose
+columns are not all truncated with the same record is refused by the weight
+functions with an error of class \code{propensity_matrix_type_error}. A matrix
+without column names gives columns named \code{V1}, \code{V2}, and so on, which the
+weight functions then refuse because they name no exposure level, so name
+the columns after the exposure levels before converting.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trunc} by subassignment carries
@@ -207,15 +305,15 @@ record covers the object it is given and raises an error of class
 units at stale positions.
 
 That check compares how many observations the record was written for against
-how many the object holds, which a reordering does not change. An operation
-that reorders the observations through vctrs, rather than through \code{[},
-therefore keeps a record written for the order they used to be in:
-\code{vctrs::vec_slice(x, 5:1)} and \code{dplyr::arrange()} both return the values in
-a new order under positions still naming the old one, and
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} answers from those positions and names the wrong
-units. Subsetting with \code{[} is handed the subscript and re-indexes, so
-reorder with \code{[}, or put the propensity scores in the order you want before
-truncating them.
+how many the object holds, which a reordering does not change, so a route
+that could reorder the observations without saying how drops the positions
+instead, at any length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()},
+\code{dplyr::filter()}, and \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}} and the helpers built on it
+return a \code{ps_trunc} whose record keeps its method and bounds and names no
+units, and \code{\link[=is_unit_truncated]{is_unit_truncated()}} refuses it. Subsetting with \code{[}, \code{sort()},
+\code{unique()}, and \code{rep()} know where the units went and re-index the record,
+and \verb{[<-} and \verb{is.na<-} move no unit and keep it, so reorder with \code{[}, or
+put the propensity scores in the order you want before truncating them.
 
 Casting a numeric vector into a \code{ps_trunc} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
 operation and not a truncation. The result is described by the method and
@@ -235,6 +333,10 @@ ps <- predict(fit, type = "response")
 # Truncate to [0.1, 0.9]
 ps_t <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
 ps_t
+
+# Bound at [1/c, 1 - 1/c], c = sqrt(n) log(n) / 5, which caps the
+# unstabilized ATE weights at c
+ps_trunc(ps, method = "adaptive")
 
 # Truncate at the 1st and 99th percentiles
 ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
@@ -259,6 +361,12 @@ if (rlang::is_installed("nnet")) {
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 with limited overlap in estimation of average treatment effects.
 \emph{Biometrika}, 96(1), 187--199.
+
+Gruber, S., Phillips, R. V., Lee, H., & van der Laan, M. J. (2022).
+Data-adaptive selection of the propensity score truncation level for
+inverse-probability-weighted and targeted maximum likelihood estimators of
+marginal point treatment effects. \emph{American Journal of Epidemiology},
+191(9), 1640--1651.
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.

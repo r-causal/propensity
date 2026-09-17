@@ -911,9 +911,10 @@ check_ipw_stabilization_score <- function(
     c(
       headline,
       x = paste("They weight {n} observation{?s} and", held),
-      i = "A per-observation score is one value for each unit, so it does not \\
-      survive the rows being restricted: subsetting the weights drops it, and \\
-      a model frame that drops incomplete rows leaves it at the length the \\
+      i = "A per-observation score is one value for each unit. Subsetting the \\
+      weights with {.code [} keeps it aligned, but a slice that cannot place \\
+      it, such as {.fn vctrs::vec_slice} or {.fn dplyr::arrange}, drops it, \\
+      and a model frame that drops incomplete rows leaves it at the length the \\
       weights were built at.",
       i = "Rebuild the weights on the rows being analyzed, or stabilize on a \\
       single {.arg stabilization_score}, which scales every weight and \\

@@ -348,15 +348,14 @@ test_that("ps_trunc works with summarize(mean = mean(ps))", {
 
   # A grouped summary slices the column once per group, and each slice holds
   # scores the truncation record was not written for, so the record is dropped
-  # and says so. The summary itself reads values rather than positions.
-  summarized <- count_record_drops(
+  # from the slices without comment. The summary itself reads values rather
+  # than positions.
+  out <- expect_silent(
     tibble(x, z, ps) |>
       group_by(truncated = is_unit_truncated(ps)) |>
       summarize(mean = mean(ps), .groups = "drop")
   )
-  expect_gt(summarized$drops, 0)
 
-  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("truncated", "mean"))
   expect_type(out$mean, "double")
@@ -557,14 +556,10 @@ test_that("ps_trunc() records how many observations its positions describe", {
   expect_equal(meta$n_obs, 5L)
 })
 
-test_that("slicing a ps_trunc shorter drops the truncation record with a warning", {
+test_that("slicing a ps_trunc shorter drops the truncation record silently", {
   x <- trunc_record_fixture()
 
-  cnd <- expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trunc_record_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_s3_class(sliced, "ps_trunc")
   expect_equal(as.numeric(sliced), c(0.3, 0.5))
@@ -585,16 +580,13 @@ test_that("slicing a ps_trunc shorter drops the truncation record with a warning
   )
 })
 
-test_that("filtering a ps_trunc column drops the truncation record with a warning", {
+test_that("filtering a ps_trunc column drops the truncation record silently", {
   skip_if_not_installed("dplyr")
 
   df <- data.frame(id = 1:5)
   df$ps <- trunc_record_fixture()
 
-  expect_warning(
-    filtered <- dplyr::filter(df, id %in% 2:3),
-    class = "propensity_trunc_record_warning"
-  )
+  filtered <- expect_silent(dplyr::filter(df, id %in% 2:3))
 
   expect_s3_class(filtered$ps, "ps_trunc")
   expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
@@ -605,14 +597,19 @@ test_that("filtering a ps_trunc column drops the truncation record with a warnin
   )
 })
 
-test_that("a length-preserving ps_trunc restore keeps the truncation record", {
+test_that("a whole ps_trunc keeps its truncation record through `[` and `[<-`", {
   x <- trunc_record_fixture()
   meta <- ps_trunc_meta(x)
   truncated_units <- c(TRUE, FALSE, FALSE, FALSE, FALSE)
 
+  # A slice is handed no subscript, so even one that leaves every unit in place
+  # cannot vouch for the positions.
   whole <- expect_silent(vec_slice(x, seq_along(x)))
-  expect_identical(ps_trunc_meta(whole), meta)
-  expect_identical(is_unit_truncated(whole), truncated_units)
+  expect_positions_dropped(ps_trunc_meta(whole), meta)
+  expect_error(
+    is_unit_truncated(whole),
+    class = "propensity_missing_meta_error"
+  )
 
   empty_subscript <- expect_silent(x[])
   expect_identical(ps_trunc_meta(empty_subscript), meta)
@@ -708,21 +705,18 @@ test_that("casting to ps_trunc records positions and a length", {
   expect_equal(ps_trunc_meta(from_integer)$n_obs, 2L)
 })
 
-test_that("a ps_trunc reordered through vctrs keeps the record for the old order", {
-  # The documented limit of the coverage check, which counts observations and so
-  # sees nothing in a reordering. No subscript reaches the restore, so the
-  # record survives naming where the observations used to be.
+test_that("a ps_trunc reordered through vctrs drops the record's positions", {
+  # The coverage check counts observations and so sees nothing in a
+  # reordering. No subscript reaches the restore, so the positions are dropped
+  # rather than left naming where the observations used to be.
   x <- trunc_record_fixture()
 
   reordered <- expect_silent(vec_slice(x, 5:1))
   expect_equal(as.numeric(reordered), c(0.6, 0.9, 0.5, 0.3, 0.1))
-  expect_identical(ps_trunc_meta(reordered), ps_trunc_meta(x))
-
-  # The winsorized unit now holds position 5, and the record still names 1, so
-  # the answer is the one the record gives rather than the one the values show.
-  expect_identical(
+  expect_positions_dropped(ps_trunc_meta(reordered), ps_trunc_meta(x))
+  expect_error(
     is_unit_truncated(reordered),
-    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+    class = "propensity_missing_meta_error"
   )
 
   # `[` is handed the subscript and re-indexes, so the same reordering through
@@ -1093,6 +1087,72 @@ test_that("casting a double to a ps_trunc keeps the truncation of the target", {
   expect_equal(meta$upper_bound, 0.9)
   expect_equal(meta$truncated_idx, integer(0))
   expect_equal(meta$n_obs, 2L)
+})
+
+# A score from a class that records no truncation is cast to a `ps_trunc`
+# unbounded: the record names the whole unit interval and no pinned unit.
+expect_unbounded_trunc_record <- function(x, n) {
+  expect_identical(
+    ps_trunc_meta(x),
+    list(
+      method = "ps",
+      lower_bound = 0,
+      upper_bound = 1,
+      truncated_idx = integer(0),
+      n_obs = n
+    )
+  )
+}
+
+cast_fixture_ps <- c(0.05, 0.15, 0.3, 0.45, 0.6, 0.72, 0.85, 0.95, 0.4, 0.55)
+
+test_that("assigning a trimmed score into a ps_trunc keeps its record", {
+  trimmed <- ps_trim(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+
+  x <- truncated
+  x[2] <- trimmed[2]
+  expect_s3_class(x, "ps_trunc")
+  expect_equal(vctrs::vec_data(x), vctrs::vec_data(truncated))
+  expect_identical(ps_trunc_meta(x), ps_trunc_meta(truncated))
+
+  # vctrs' assignment reaches the same restore a slice does, so it keeps the
+  # values and drops the positions.
+  assigned <- vctrs::vec_assign(truncated, 2, trimmed[2])
+  expect_equal(vctrs::vec_data(assigned), vctrs::vec_data(x))
+  expect_positions_dropped(ps_trunc_meta(assigned), ps_trunc_meta(truncated))
+})
+
+test_that("casting a ps_trim to a ps_trunc records no bound", {
+  trimmed <- ps_trim(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+
+  out <- vctrs::vec_cast(trimmed, truncated)
+  expect_s3_class(out, "ps_trunc")
+  expect_identical(vctrs::vec_data(out), vctrs::vec_data(trimmed))
+  expect_unbounded_trunc_record(out, 10L)
+
+  # A score that arrived missing passes through as well.
+  with_missing <- ps_trim(c(cast_fixture_ps, NA), lower = 0.1, upper = 0.9)
+  out <- vctrs::vec_cast(with_missing, truncated)
+  expect_identical(vctrs::vec_data(out), vctrs::vec_data(with_missing))
+  expect_unbounded_trunc_record(out, 11L)
+})
+
+test_that("casting a psw to a ps_trunc records no bound", {
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  w <- psw(c(0.2, 0.5, 0.7), estimand = "ate")
+
+  out <- vctrs::vec_cast(w, truncated)
+  expect_s3_class(out, "ps_trunc")
+  expect_identical(vctrs::vec_data(out), c(0.2, 0.5, 0.7))
+  expect_unbounded_trunc_record(out, 3L)
+
+  # Weights outside the unit interval are not propensity scores.
+  expect_error(
+    vctrs::vec_cast(psw(c(2, 3), estimand = "ate"), truncated),
+    class = "propensity_range_error"
+  )
 })
 
 test_that("combining a ps_trunc with an integer keeps the propensity scores", {
@@ -1803,12 +1863,6 @@ test_that("ps_trunc() reads a two-level multinomial fit on the binary path", {
 })
 
 test_that("ps_trunc() refuses a fit it cannot read propensity scores from", {
-  linear <- lm(z ~ x1 + x2, data = trunc_model_data)
-
-  expect_error(
-    ps_trunc(linear, method = "ps"),
-    class = "propensity_method_error"
-  )
   expect_error(
     ps_trunc(structure(list(), class = "not_a_model"), method = "ps"),
     class = "propensity_method_error"
@@ -1817,8 +1871,62 @@ test_that("ps_trunc() refuses a fit it cannot read propensity scores from", {
 
 test_that("ps_trunc() names the class of a fit it has no reading for", {
   expect_propensity_error(
-    ps_trunc(lm(z ~ x1 + x2, data = trunc_model_data), method = "ps")
+    ps_trunc(structure(list(), class = "not_a_model"), method = "ps")
   )
+})
+
+test_that("ps_trunc() refuses a model of a dose and names the routes that work", {
+  set.seed(31)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+
+  # A linear model and a gaussian glm both fit conditional means rather than
+  # probabilities, so there is no propensity score to bound. The refusal is the
+  # same for both, and it points at trimming the dose model on the density
+  # scale or bounding the weights built from it.
+  fits <- list(
+    lm = lm(dose ~ x, data = dose_data),
+    gaussian = glm(dose ~ x, data = dose_data, family = gaussian())
+  )
+
+  for (kind in names(fits)) {
+    cnd <- expect_error(
+      ps_trunc(fits[[kind]], method = "ps"),
+      class = "propensity_model_family_error",
+      info = kind
+    )
+    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+    expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+    expect_match(message, "wt_trunc()", fixed = TRUE)
+  }
+
+  expect_propensity_error(ps_trunc(fits$lm, method = "ps"))
+  expect_propensity_error(ps_trunc(fits$gaussian, method = "ps"))
+})
+
+test_that("ps_trunc() refuses a robust linear model of a dose", {
+  skip_if_not_installed("MASS")
+
+  set.seed(33)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+  fit <- MASS::rlm(dose ~ x, data = dose_data)
+
+  # A robust fit is still a fit of the conditional mean, and it inherits from
+  # `lm`, so it is refused with the same remedy as a least squares fit.
+  cnd <- expect_error(
+    ps_trunc(fit, method = "ps"),
+    class = "propensity_model_family_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+  expect_match(message, "wt_trunc()", fixed = TRUE)
+
+  expect_propensity_error(ps_trunc(fit, method = "ps"))
 })
 
 # The exposure is announced when it is read and not otherwise, so the message
@@ -2001,4 +2109,65 @@ test_that("ps_trunc() hands its own call to exposure-type detection", {
   )
 
   expect_identical(detection_call, quote(outer_caller()))
+})
+
+# A binomial additive fit reports its scores as a one-dimensional array. With
+# only parametric terms it fits the same model as the binomial `glm`, so the two
+# bound the same units.
+test_that("ps_trunc() bounds a binomial additive fit like the equivalent glm", {
+  skip_if_not_installed("mgcv")
+
+  set.seed(1187)
+  n <- 250
+  gam_data <- data.frame(x1 = rnorm(n), x2 = rnorm(n))
+  gam_data$z <- rbinom(n, 1, plogis(2 * gam_data$x1 - 1.2 * gam_data$x2))
+
+  gam_fit <- mgcv::gam(z ~ x1 + x2, data = gam_data, family = binomial())
+  glm_fit <- glm(z ~ x1 + x2, data = gam_data, family = binomial())
+  gam_scores <- predict(gam_fit, type = "response")
+  gam_scores <- setNames(as.vector(gam_scores), names(gam_scores))
+
+  truncs <- list(
+    ps = list(method = "ps"),
+    pctl = list(method = "pctl"),
+    cr = list(method = "cr", .exposure = gam_data$z),
+    adaptive = list(method = "adaptive")
+  )
+
+  for (kind in names(truncs)) {
+    args <- truncs[[kind]]
+    from_gam <- rlang::exec(ps_trunc, gam_fit, !!!args)
+    from_glm <- rlang::exec(ps_trunc, glm_fit, !!!args)
+    from_scores <- rlang::exec(ps_trunc, gam_scores, !!!args)
+
+    expect_s3_class(from_gam, "ps_trunc")
+    expect_null(dim(vctrs::vec_data(from_gam)))
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_scores),
+      tolerance = 1e-12,
+      info = kind
+    )
+    expect_identical(
+      ps_trunc_meta(from_gam),
+      ps_trunc_meta(from_scores),
+      info = kind
+    )
+    expect_identical(
+      ps_trunc_meta(from_gam)$truncated_idx,
+      ps_trunc_meta(from_glm)$truncated_idx,
+      info = kind
+    )
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_glm),
+      tolerance = 1e-6,
+      info = kind
+    )
+  }
+
+  expect_gt(
+    length(ps_trunc_meta(ps_trunc(gam_fit, method = "adaptive"))$truncated_idx),
+    0
+  )
 })

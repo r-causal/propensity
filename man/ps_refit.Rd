@@ -10,11 +10,25 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 \item{trimmed_ps}{A \code{ps_trim} object returned by \code{\link[=ps_trim]{ps_trim()}}. Refitting reads
 the retained positions out of the trimming record, so an object whose
 record was dropped or no longer covers it raises an error of class
-\code{propensity_missing_meta_error}; see \code{\link[=ps_trim]{ps_trim()}}.}
+\code{propensity_missing_meta_error}; see \code{\link[=ps_trim]{ps_trim()}}. A single column of a data
+frame made from a trimmed score matrix raises an error of class
+\code{propensity_method_error}; refit the matrix before converting it.
+Truncated scores from
+\code{\link[=ps_trunc]{ps_trunc()}} keep every unit, so refitting them would return the original
+model's scores, and they raise an error of class
+\code{propensity_method_error}.}
 
 \item{model}{The original fitted model used to estimate the propensity
 scores (e.g. a \link[stats:glm]{glm} or \link[nnet:multinom]{multinom} object).
-The model is refit via \link[stats:update]{update()} on the retained subset.}
+The model is refit via \link[stats:update]{update()} on the retained subset.
+Trimmed propensity scores are refit only by a model of the probability of
+the exposure; a model of a conditional mean, such as a \code{\link[stats:lm]{stats::lm()}} fit
+or a gaussian \code{\link[stats:glm]{stats::glm()}}, never produced them and raises an error of
+class \code{propensity_model_family_error}. A dose model trimmed with
+\code{method = "density"} or \code{method = "resid"} is refit only by a model of
+the dose's conditional mean, such as a gaussian \code{\link[stats:glm]{stats::glm()}},
+\code{\link[stats:lm]{stats::lm()}}, \code{\link[mgcv:gam]{mgcv::gam()}}, or \code{\link[MASS:rlm]{MASS::rlm()}} fit, and any other model,
+such as one of a probability, raises the same error.}
 
 \item{.data}{A data frame with one row per observation in \code{trimmed_ps}, in
 the same order. If \code{NULL} (the default), the data are recovered from
@@ -28,7 +42,16 @@ underlying variables let the transformation be recomputed from the retained
 rows. Pass \code{.data} when the data the model was fit on can no longer be
 reached.}
 
-\item{...}{Additional arguments passed to \link[stats:update]{update()}.}
+\item{...}{Additional arguments passed to \link[stats:update]{update()}, such
+as \code{subset} or \code{weights}. Each is evaluated against the retained rows, the
+data the refit is handed: a name is read from their columns first and
+otherwise from the environment \code{ps_refit()} was called from, so
+\code{subset = x1 > 0} refits on the retained rows where \code{x1} is positive. A
+logical or index vector supplied instead indexes the retained rows, not
+the full data. The \code{.data} and \code{.env} pronouns are available to tell a
+column from a variable of the same name. Without \code{.data}, the retained
+rows hold only the variables \code{model} reads, so an argument naming any
+other column needs the data frame passed to \code{.data}.}
 }
 \value{
 A \code{ps_trim} object with re-estimated propensity scores for retained
@@ -37,6 +60,14 @@ confirm refitting was applied. Refitting replaces the values a calibrated
 score held with predictions from the refit model, so a score trimmed after
 \code{\link[=ps_calibrate]{ps_calibrate()}} is no longer calibrated and \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} answers
 \code{FALSE} for the result.
+
+For a trimmed dose model, the retained values are the refit model's
+conditional means, and the spread in the record is re-estimated from the
+retained residuals under the recorded density family, unless the trim was
+made at a \code{.sigma} the caller supplied, which is kept. The recorded
+threshold describes the cut that was made and is left as it was, so the
+refit model can place a retained unit's conditional density below it;
+nothing is trimmed again.
 }
 \description{
 Re-estimates a propensity score model using only the observations retained
@@ -60,6 +91,14 @@ every row the data carry. Refitting narrows that sample further, to the
 retained rows, so the original \code{subset} is dropped from the call rather than
 put to work a second time on rows it was never about. A \code{subset} passed
 through \code{...} is an instruction of its own and is honored.
+}
+
+\subsection{Which level a refit predicts}{
+
+For a vector of scores, the refit predicts the probability of the level the
+scores describe: when \code{\link[=ps_trim]{ps_trim()}} was given a model with its first level
+named as focal, the refit reports one minus the model's prediction, and for
+scores supplied directly it reports the level the model predicts by default.
 }
 
 \subsection{Arguments read from outside the formula}{

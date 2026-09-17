@@ -2336,8 +2336,8 @@ test_that("the joint route rebuilds a binary component stabilized on a score", {
 test_that("the weights mismatch names a component whose score was dropped", {
   dat <- sim_joint_continuous()
 
-  # A score holds one value per observation, so an operation that changes the
-  # length of the weights drops it. What is left is a component the record says
+  # A score holds one value per observation, so a slice that cannot place it
+  # drops it. What is left is a component the record says
   # was stabilized and holds no vector for, which is what a component
   # stabilized on the marginal proportion looks like: the system stands the
   # marginal proportion in, reaches a different product, and the preflight is
@@ -2348,11 +2348,11 @@ test_that("the weights mismatch names a component whose score was dropped", {
 
   half <- seq_len(floor(nrow(dat) / 2))
   expect_warning(
-    first <- fx$wts[half],
+    first <- vctrs::vec_slice(fx$wts, half),
     class = "propensity_stabilization_score_warning"
   )
   expect_warning(
-    second <- fx$wts[-half],
+    second <- vctrs::vec_slice(fx$wts, -half),
     class = "propensity_stabilization_score_warning"
   )
 
@@ -2380,8 +2380,8 @@ test_that("a component's score left stale by a model frame is refused", {
   dat$w[order(dat$e, decreasing = TRUE)[seq_len(10)]] <- NA
   kept <- !is.na(dat$w)
 
-  # The other way the same drop arrives. Subsetting the weights empties the
-  # slot and marks it, which the block above pins; a model frame instead drops
+  # The other way the same drop arrives. A slice empties the slot and marks
+  # it, which the block above pins; a model frame instead drops
   # the incomplete rows in C and re-attaches the record whole, so the score
   # reaches `ipw()` at the length the product was built at rather than at the
   # length of the rows it is about to weight. Multiplying that score into a
@@ -2390,16 +2390,14 @@ test_that("a component's score left stale by a model frame is refused", {
   # the component whose score is the wrong length.
   dose_score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
 
-  # The drop is reported where the outcome model restricts the rows, and is
-  # asserted here so that the only condition left for the call below is the one
-  # being pinned.
-  expect_warning(
+  # The fit is silent: whatever it subsets with `[` keeps the score aligned,
+  # and the model frame leaves it stale without passing through a restore.
+  expect_no_warning(
     fx <- fit_joint_continuous(
       dat,
       dose_score = dose_score,
       outcome_rhs = "a * e + w"
-    ),
-    class = "propensity_stabilization_score_warning"
+    )
   )
 
   seen <- character()

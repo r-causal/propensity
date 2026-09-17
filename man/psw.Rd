@@ -17,6 +17,7 @@ new_psw(
   truncated = FALSE,
   calibrated = FALSE,
   stabilization_score = NULL,
+  wt_truncated = FALSE,
   ...
 )
 
@@ -27,7 +28,8 @@ psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  wt_truncated = FALSE
 )
 
 is_psw(x)
@@ -61,6 +63,10 @@ propensity scores? Defaults to \code{FALSE}.}
 the object, either a single value or one value per observation. Every value
 must be positive and finite. Defaults to \code{NULL}, meaning no fixed score was
 supplied.}
+
+\item{wt_truncated}{Logical. Were the weights themselves truncated? This is
+separate from \code{truncated}, which describes the propensity scores the
+weights were built from. Defaults to \code{FALSE}.}
 
 \item{...}{Additional attributes stored on the object (developer use only).}
 
@@ -98,6 +104,9 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \itemize{
 \item \code{is_psw()} tests whether an object is a \code{psw} vector.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
+\item \code{\link[=is_wt_truncated]{is_wt_truncated()}} returns \code{TRUE} if the weights themselves were
+truncated, which is recorded apart from whether the propensity scores they
+were built from were.
 \item \code{stabilization_score()} returns the user-supplied stabilization score, or
 \code{NULL} when none was recorded or when a per-observation score was dropped
 because an operation changed the length of the weights.
@@ -150,13 +159,13 @@ so operations like normalization (\code{weights / sum(weights)}) retain metadata
 An operation between two \code{psw} objects merges what each of them records. Two
 different estimands are pasted together, and an estimand only one operand
 names stands for the result; the result is stabilized only when both operands
-are, and it is marked as trimmed, truncated, or calibrated when either
-operand is. The remaining attributes, the \code{stabilization_score}, the records
-left by a modified propensity score, the attributes describing a categorical
-exposure, and the exposure records, are carried by agreement: one only a
-single operand records carries, and one both record with the same value
-carries. One they record differently is dropped, since neither value
-describes the result, and a warning of class
+are, and it is marked as trimmed, truncated, calibrated, or weight-truncated
+when either operand is. The remaining attributes, the
+\code{stabilization_score}, the records left by a modified propensity score, the
+attributes describing a categorical exposure, and the exposure records, are
+carried by agreement: one only a single operand records carries, and one
+both record with the same value carries. One they record differently is
+dropped, since neither value describes the result, and a warning of class
 \code{propensity_metadata_conflict_warning} names it, once for each attribute
 dropped that way and whatever order the inputs were given in. The rule is
 applied per operation, so an attribute one operation drops for a
@@ -180,22 +189,60 @@ comment.
 
 Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only when all
 metadata matches; mismatched metadata produces a warning and falls back to a
-plain numeric vector. Concatenation appends one set of observations to
-another, so the positions a modification record names would describe units
-from the other input; those records are dropped from the result whether or
-not the inputs agree on them. The categorical attributes name exposure levels
-rather than positions, and the exposure records describe the exposure rather
-than any unit, so both carry when the inputs agree.
+plain numeric vector. The trimming, truncation, and weight truncation
+records are compared by what they say about the modification: weights built
+from scores trimmed or truncated differently, from a trim that was refit
+and one that was not, or truncated at different bounds describe different
+estimands and are combined only as numbers. Weights flagged as modified with no record agree
+with any record. Concatenation appends one set of observations to another, so
+the positions a record names would describe units from the other input; the
+result keeps each record without its positions, which \code{\link[=is_refit]{is_refit()}}, the
+printed footer, and a later combine still read. The calibration record (\code{ps_calib_meta}) names the
+curve the scores were calibrated with rather than any position, the
+categorical attributes name exposure levels, and the exposure records
+describe the exposure rather than any unit, so all of them carry by the
+agreement rule above: two calibration records agree when they name the same
+method and smoothing.
+
+\code{c()} of a single \code{psw} returns it unchanged, with every record. A combine
+through vctrs drops the positional records even when it is handed a single
+input: \code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)},
+and an ungrouped \code{dplyr::reframe()} all rebuild the column, so a later
+\code{\link[=is_unit_trimmed]{is_unit_trimmed()}}, \code{\link[=is_unit_truncated]{is_unit_truncated()}}, or \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}} on
+the result refuses it.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
-Two kinds of attribute hold one value per observation and so cannot be
-re-indexed for a subset: a \code{stabilization_score} with more than one value,
-and the records left by a modified propensity score (\code{ps_trim_meta},
-\code{ps_trunc_meta}, and \code{ps_calib_meta}). Where an operation goes through
-vctrs, these are carried when the result comes back at the length they were
-recorded on and dropped when it does not. Any same-length operation keeps
-them, a reordering or a subscript with duplicates included, so the positions
-a record names can end up describing different observations than they did.
+Two kinds of attribute hold one value per observation. The records left by
+a trimmed or truncated propensity score (\code{ps_trim_meta} and
+\code{ps_trunc_meta}) or by truncating the weights themselves
+(\code{psw_trunc_meta}) name units by position, and \code{[} is handed the subscript,
+so it re-indexes each record onto the result: \code{rev()}, \code{sort()},
+\code{x[order(x)]}, and a shorter subset all return records naming the units at
+their new positions. Any other operation through vctrs is not handed a
+subscript, so it keeps the positions only where every unit stays at its
+place, as in elementwise arithmetic, and otherwise drops them, at any
+length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()}, \code{dplyr::filter()},
+\code{unique()}, \code{rep_len()}, and \code{vctrs::vec_c()} of a single input all return
+weights whose records name no units. A dropped record keeps its method, its
+bounds, and whether the model was refit, so \code{\link[=is_refit]{is_refit()}}, the printed
+footer, and the bound comparison of a later combine still read it.
+Subassignment with \verb{[<-} and \verb{is.na<-} moves no unit and keeps the records
+whole; \verb{[<-} refuses a value whose records describe a different
+modification, and accepts one with no record. A \verb{[<-} of a value modified
+the same way that writes a missing weight leaves that unit listed as
+retained in the record, as \verb{is.na<-} on a \code{psw} does; \verb{is.na<-} on a
+\code{ps_trim} score instead removes the unit from its retained set. vctrs' own assignment, \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}}, reaches the same restore
+a slice does and cannot be told apart from one, so it drops the positions,
+and so do the helpers built on it or on a combine, such as
+\code{tidyr::replace_na()}, \code{dplyr::coalesce()}, \code{dplyr::if_else()}, and
+\code{dplyr::case_when()}.
+
+A \code{stabilization_score} with more than one value, on the weights or on a
+component of a \code{\link[=wt_joint]{wt_joint()}} product, is in the order of the units too. \code{[}
+subsets it with the weights, elementwise arithmetic keeps it, and any other
+route through vctrs that brings back observations drops it with a warning of
+class \code{propensity_stabilization_score_warning}, since the score may no longer
+line up with the weights.
 
 Dropping the \code{stabilization_score} warns, because the score was supplied by
 the user and the weights can be recomputed on the subset. Dropping a
@@ -210,21 +257,22 @@ weights built on trimmed propensity scores come back out of every outcome
 model fit on them still carrying a record written for rows that are no
 longer there.
 
-Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} answer by position, so each checks that the record
-covers the vector it is given and raises an error of class
-\code{propensity_missing_meta_error} when it does not, or when weights marked as
-modified carry no record at all, rather than name modified units at stale
-positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather than a position, so it
-answers from any record present and refuses only when the record is absent
-entirely.
+Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}},
+\code{\link[=is_unit_truncated]{is_unit_truncated()}}, and \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}} answer by position, so
+each checks that the record covers the vector it is given and raises an
+error of class \code{propensity_missing_meta_error} when it does not, or when
+weights marked as modified carry no record at all, rather than name modified
+units at stale positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather than a
+position, so it answers from any record present and refuses only when the
+record is absent entirely.
 
 The result of any of these operations stays a \code{psw} and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated
-status, the attributes describing a categorical exposure, which name the
+status, the calibration record, which names a calibration curve rather than
+any unit, the attributes describing a categorical exposure, which name the
 exposure levels rather than the units, and the exposure records, which
-describe the exposure rather than any unit, so both mean the same thing at
-any length.
+describe the exposure rather than any unit, so all of them mean the same
+thing at any length.
 
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so

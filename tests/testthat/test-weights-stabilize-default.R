@@ -331,13 +331,13 @@ test_that("the data frame method resolves the continuous default", {
   )
 })
 
-test_that("the modified-score methods resolve the continuous default", {
+test_that("the modified-score methods refuse a continuous exposure under the default", {
   dat <- stabilize_default_data
 
-  # A score a modification can be applied to has to lie in (0, 1), so the
-  # conditional mean these routes are handed is one that does. What is being
-  # read here is the default, not the arithmetic, which is the same as the
-  # numeric route's on the same numbers.
+  # A conditional mean that happens to lie in (0, 1) can be modified as if it
+  # were a propensity score, but no weights for a dose are built from the
+  # result, so the continuous default is never reached through these methods.
+  # The numeric route pins that default.
   scores <- plogis(0.5 * dat$x)
   fit <- glm(
     trt ~ x,
@@ -355,21 +355,14 @@ test_that("the modified-score methods resolve the continuous default", {
   )
 
   for (route in names(modified)) {
-    ps <- modified[[route]]
-
-    weights <- wt_ate(ps, dat$dose, exposure_type = "continuous")
-
-    expect_true(is_stabilized(weights), info = route)
-    expect_identical(density_meta(weights)$numerator, "marginal", info = route)
-    expect_equal(
-      as.numeric(weights),
-      as.numeric(wt_ate(
-        ps,
-        dat$dose,
-        exposure_type = "continuous",
-        stabilize = TRUE
-      )),
-      tolerance = 1e-12,
+    expect_error(
+      wt_ate(modified[[route]], dat$dose, exposure_type = "continuous"),
+      class = "propensity_modified_continuous_error",
+      info = route
+    )
+    expect_error(
+      wt_cens(modified[[route]], dat$dose, exposure_type = "continuous"),
+      class = "propensity_modified_continuous_error",
       info = route
     )
   }

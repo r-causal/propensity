@@ -260,12 +260,161 @@ record_covers <- function(meta, n) {
   !is.null(meta$n_obs) && meta$n_obs == n
 }
 
+# The scores a modified propensity score holds, one unit per element or, for a
+# matrix, one unit per row. vctrs compares a bare matrix row by row, which is
+# what `unique()` of a matrix of scores merges.
+score_values <- function(x) {
+  if (is.matrix(x)) {
+    out <- unclass(x)[,, drop = FALSE]
+    dimnames(out) <- NULL
+    out
+  } else {
+    vctrs::vec_data(x)
+  }
+}
+
+# The units at `loc`, taken through the class's own subsetting so the result
+# keeps its class and a record re-indexed onto them. A matrix is subset by row;
+# a single subscript would index it as one long vector.
+subset_score_units <- function(x, loc) {
+  if (is.matrix(x)) {
+    x[loc, , drop = FALSE]
+  } else {
+    x[loc]
+  }
+}
+
+# Whether every set of units `unique()` merges into one element shares a single
+# status. `vec_group_id()` groups values the way `vec_unique_loc()` keeps them,
+# missing values included, so each group is one element of the result.
+merged_units_agree <- function(values, status) {
+  groups <- vctrs::vec_group_id(values)
+  pairs <- data.frame(group = as.integer(groups), status = status)
+
+  vctrs::vec_unique_count(pairs) == attr(groups, "n")
+}
+
+# A modified score matrix as a data frame. A row of the matrix is a unit, and so
+# is a row of the frame, so every column is a score vector of the matrix's class
+# carrying the matrix's record unchanged: its positions name rows, which are the
+# elements of each column. The frame's own rows and names are the ones base R
+# gives the plain matrix.
+modified_score_matrix_frame <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  record_attr,
+  build_column,
+  ...
+) {
+  meta <- attr(x, record_attr)
+  values <- unclass(x)
+  attr(values, record_attr) <- NULL
+  out <- as.data.frame(values, row.names = row.names, optional = optional, ...)
+
+  for (j in seq_along(out)) {
+    out[[j]] <- build_column(unname(as.double(out[[j]])), meta)
+  }
+
+  out
+}
+
+# The score matrix a data frame of modified score columns stands for, or `NULL`
+# when no column is modified. The frame describes one matrix only when every
+# column is the same class and carries the same record, as `as.data.frame()`
+# leaves them and as row subsetting keeps them; anything else mixes scores that
+# were modified differently, or not at all, into one set of units.
+frame_as_modified_score_matrix <- function(frame, call = rlang::caller_env()) {
+  columns <- unclass(frame)
+  kinds <- vapply(
+    columns,
+    function(column) {
+      if (inherits(column, "ps_trim")) {
+        "trim"
+      } else if (inherits(column, "ps_trunc")) {
+        "trunc"
+      } else {
+        "plain"
+      }
+    },
+    character(1)
+  )
+
+  if (all(kinds == "plain")) {
+    return(NULL)
+  }
+
+  kind <- kinds[[1]]
+  record_attr <- if (identical(kind, "trim")) {
+    "ps_trim_meta"
+  } else {
+    "ps_trunc_meta"
+  }
+  records <- lapply(columns, attr, record_attr)
+  agree <- all(kinds == kind) &&
+    all(vapply(records, identical, logical(1), records[[1]]))
+
+  if (!agree) {
+    abort(
+      c(
+        "The columns of {.arg .propensity} must be modified alike.",
+        x = "Some columns are trimmed or truncated propensity scores and the
+             others are not, or their records differ, so the columns do not
+             describe one set of units.",
+        i = "Build the data frame from a single trimmed or truncated score
+             matrix with {.fn as.data.frame}, or pass the matrix itself."
+      ),
+      error_class = "propensity_matrix_type_error",
+      call = call
+    )
+  }
+
+  values <- do.call(cbind, lapply(columns, vctrs::vec_data))
+  row_names <- if (.row_names_info(frame) > 0) rownames(frame)
+  dimnames(values) <- list(row_names, names(frame))
+
+  if (identical(kind, "trim")) {
+    list(
+      scores = new_trimmed_ps(values, ps_trim_meta = records[[1]]),
+      modification_type = "trim"
+    )
+  } else {
+    list(
+      scores = new_ps_trunc(values, records[[1]]),
+      modification_type = "trunc"
+    )
+  }
+}
+
+# The units a modified score holds, one per element or, for a matrix, one per
+# row, and those of them with a missing score. A row with any missing score has
+# no complete probability vector, so the whole unit is missing.
+missing_unit_count <- function(x) {
+  if (is.matrix(x)) nrow(x) else length(x)
+}
+
+missing_units <- function(x) {
+  values <- score_values(x)
+  if (is.matrix(values)) {
+    which(rowSums(is.na(values)) > 0)
+  } else {
+    which(is.na(values))
+  }
+}
+
 # `[` knows the subscript, which is what re-indexing a record takes. Every
 # occurrence of a recorded position is mapped onto the position it now holds, so
 # a subscript naming a position twice reports that unit twice. `NA` names no
-# position, so an element taken by one falls in neither set.
+# position, so an element taken by one falls in neither set, and neither does
+# one taken from past the last recorded position.
+#
+# `i` holds positions as `vec_as_location()` returns them, positive or `NA`. A
+# zero or negative value would drop or exclude elements of the mask rather than
+# name a position.
 reindex_positions <- function(positions, i) {
-  which(i %in% positions)
+  mask <- logical(max(c(positions, 0L)))
+  mask[positions] <- TRUE
+  which(mask[i])
 }
 
 # The rows `x[i, ]` is built from, as positions in `x`, which is the form a

@@ -166,7 +166,7 @@ model_levels.multinom <- function(model) {
 # that leave nothing to read as the probability of the exposure, which is what a
 # binary exposure needs.
 #
-# `remedy` goes unread here. What is wrong with a `multinom` of more than two
+# `remedy` and `problem` go unread here. What is wrong with a `multinom` of more than two
 # levels is the number of levels rather than the family, so the remedy is the
 # one written below whichever argument the model arrived in. A `multinom`
 # supplied as a numerator model never reaches this method at all:
@@ -178,6 +178,7 @@ check_binary_model_family.multinom <- function(
   model,
   arg = ".propensity",
   remedy = NULL,
+  problem = NULL,
   call = rlang::caller_env()
 ) {
   n_levels <- length(model$lev)
@@ -209,6 +210,14 @@ check_binary_model_family.multinom <- function(
 #' @export
 extract_binary_ps.multinom <- function(model, call = rlang::caller_env()) {
   as.numeric(stats::fitted(model))
+}
+
+# `predict()` on a `multinom` offers no response type. Its probabilities for a
+# two-level fit are the one column `fitted()` reports, the probability of the
+# second level.
+#' @export
+predict_binary_ps.multinom <- function(model, newdata) {
+  as.numeric(stats::predict(model, newdata = newdata, type = "probs"))
 }
 
 # A `multinom` keeps no model frame, so `model.frame()` rebuilds one by

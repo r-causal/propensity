@@ -850,18 +850,19 @@ test_that("weights that differ only in these records cast to each other", {
 # ---- weights built from a modified propensity score -------------------------
 
 test_that("weights from a trimmed propensity score carry the records", {
+  # A conditional mean in (0, 1) trimmed as if it were a propensity score is not
+  # one, so no continuous weights, and no records, are built from it.
   trimmed <- ps_trim(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- muffle_variance_warning(muffle_refit_warning(wt_ate(
-    trimmed,
-    records_exposure,
-    exposure_type = "continuous",
-    stabilize = TRUE
-  )))
-
-  expect_identical(estimand(w), "ate; trimmed")
-  expect_identical(exposure_type(w), "continuous")
-  expect_identical(density_meta_summary(w), marginal_normal_record)
+  expect_error(
+    wt_ate(
+      trimmed,
+      records_exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_modified_continuous_error"
+  )
 
   binary <- muffle_refit_warning(wt_ate(
     ps_trim(records_binary_ps, method = "ps", lower = 0.25, upper = 0.65),
@@ -875,18 +876,19 @@ test_that("weights from a trimmed propensity score carry the records", {
 })
 
 test_that("weights from a truncated propensity score carry the records", {
+  # The same holds for a conditional mean bounded as if it were a propensity
+  # score.
   truncated <- ps_trunc(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- muffle_variance_warning(wt_ate(
-    truncated,
-    records_exposure,
-    exposure_type = "continuous",
-    stabilize = TRUE
-  ))
-
-  expect_identical(estimand(w), "ate; truncated")
-  expect_identical(exposure_type(w), "continuous")
-  expect_identical(density_meta_summary(w), marginal_normal_record)
+  expect_error(
+    wt_ate(
+      truncated,
+      records_exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_modified_continuous_error"
+  )
 
   binary <- wt_ate(
     ps_trunc(records_binary_ps, method = "ps", lower = 0.25, upper = 0.65),

@@ -18,6 +18,9 @@ A named list with elements:
 \item{\code{n_obs}}{The number of observations those indices describe.}
 \item{\code{lower}, \code{upper}}{Numeric cutoffs, when applicable.}
 \item{\code{refit}}{Logical, \code{TRUE} if the model was refit via \code{\link[=ps_refit]{ps_refit()}}.}
+\item{\code{focal_inverted}}{For a vector of scores, logical, \code{TRUE} if the
+scores are one minus the probability the fitted model reports, which
+\code{\link[=ps_refit]{ps_refit()}} reads to predict the same level.}
 }
 Additional method-specific elements (e.g. \code{cutoff}, \code{delta}, \code{lambda}) may
 also be present.

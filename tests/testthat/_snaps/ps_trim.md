@@ -138,6 +138,26 @@
       i Metadata cannot be preserved when combining incompatible objects
       i Use identical objects or explicitly cast to numeric to avoid this warning
 
+# ps_refit() refuses a model of a dose for a trimmed score
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! Trimmed propensity scores can only be refit with a model of the probability of the exposure.
+      x `model` is <lm>, whose fitted values are conditional means rather than probabilities.
+      i `trimmed_ps` holds propensity scores this model never produced. To set aside the units whose dose is implausible under a model of a continuous exposure, trim that model itself with `ps_trim(method = "density")`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! Trimmed propensity scores can only be refit with a model of the probability of the exposure.
+      x `model` was fit with `gaussian()`, whose fitted values are conditional means rather than probabilities.
+      i `trimmed_ps` holds propensity scores this model never produced. To set aside the units whose dose is implausible under a model of a continuous exposure, trim that model itself with `ps_trim(method = "density")`.
+
 # ps_trim rejects the categorical-only optimal method on a vector
 
     Code
@@ -146,6 +166,26 @@
       Error in `ps_trim()`:
       ! Method "optimal" is only supported for categorical exposures.
       i Supply the propensity scores as a matrix or data frame with one column per exposure level.
+
+# ps_trim() refuses the density methods on a vector of fitted means
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! Method "density" cannot trim a vector of values.
+      x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
+      i Supply the model of the exposure's conditional mean, such as an `lm()` fit, as `.propensity`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! Method "resid" cannot trim a vector of values.
+      x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
+      i Supply the model of the exposure's conditional mean, such as an `lm()` fit, as `.propensity`.
 
 # ps_trim names `.exposure` when the method requires one
 
@@ -234,13 +274,54 @@
       i Scores predicted from a fit with `na.action = na.exclude` are padded back to the full length of the data, so they outnumber the rows the model analyzed.
       i Trim scores from a fit whose `na.action` drops those rows, such as `stats::na.omit()`.
 
+# ps_refit() says how to reach a column the model does not read
+
+    Code
+      expr
+    Condition <propensity_no_data_error>
+      Error in `ps_refit()`:
+      ! Can't evaluate `subset` against the retained rows.
+      i Without `.data`, only the variables `model` reads are available as columns. Pass the data frame to `.data` to use any other column.
+      Caused by error:
+      ! object 'x2' not found
+
+# ps_refit() refuses a model of every level for a vector of scores
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! A binary propensity score needs the probability of one of the exposure's two levels.
+      x `model` was fit to 3 levels ("a", "b", and "c"), so it fits no single probability to read against a binary exposure.
+      i Fit the propensity score model to the exposure being weighted, or weight the exposure the model was fit to with `exposure_type = "categorical"`.
+
+# ps_refit() refuses a model of one probability for a matrix of scores
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! A matrix of trimmed propensity scores can only be refit with a model of the probability of every exposure level.
+      x `trimmed_ps` holds one column per level, and `model` is <multinom>, which fits a single probability.
+      i Refit with the model the scores were read from, such as a `nnet::multinom()` fit to all of the exposure's levels.
+
+# the record of an inverted trim follows the scores
+
+    Code
+      out <- vctrs::vec_c(inverted, as_given)
+    Condition <propensity_coercion_warning>
+      Warning in `vec_ptype2.ps_trim.ps_trim()`:
+      Converting ps_trim to numeric: different trimming parameters
+      i Metadata cannot be preserved when combining incompatible objects
+      i Use identical objects or explicitly cast to numeric to avoid this warning
+
 # ps_trim() names the class of a fit it has no reading for
 
     Code
       expr
     Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! No method for objects of class lm
+      ! No method for objects of class not_a_model
 
 # ps_trim() refuses scores that are not numbers
 

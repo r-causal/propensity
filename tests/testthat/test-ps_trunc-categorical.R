@@ -1,6 +1,6 @@
 valid_trunc_matrix_fixture <- function() {
   exposure <- factor(c("a", "b", "c", "a", "b", "c"))
-  # every row sums to 1 and no cell falls below 0.01, so the default threshold
+  # every row sums to 1 and no cell falls below 0.1, so the default threshold
   # leaves the scores as they are
   ps_matrix <- rbind(
     c(0.50, 0.30, 0.20),
@@ -743,21 +743,20 @@ test_that("ps_trunc aborts when the categorical threshold reaches 1/k", {
   expect_s3_class(cnd, "propensity_range_error")
 })
 
-test_that("ps_trunc defaults the categorical threshold to 0.01", {
+test_that("ps_trunc defaults the categorical threshold to 0.1", {
   fixture <- valid_trunc_matrix_fixture()
 
-  # Truncation and trimming deliberately default to different thresholds: 0.01
-  # here against 0.1 in ps_trim(), because truncation only bounds units and
-  # trimming drops them.
+  # Truncation and trimming share the default threshold of 0.1, which is also
+  # the floor the binary path defaults to.
   explicit <- ps_trunc(
     fixture$ps_matrix,
     .exposure = fixture$exposure,
     method = "ps"
   )
-  expect_equal(ps_trunc_meta(explicit)$lower_bound, 0.01)
+  expect_equal(ps_trunc_meta(explicit)$lower_bound, 0.1)
 
   defaulted <- ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure)
-  expect_equal(ps_trunc_meta(defaulted)$lower_bound, 0.01)
+  expect_equal(ps_trunc_meta(defaulted)$lower_bound, 0.1)
 })
 
 test_that("ps_trunc truncates a data frame with the method left at its default", {
@@ -776,7 +775,7 @@ test_that("ps_trunc truncates a data frame with the method left at its default",
     exact = TRUE
   )
   expect_equal(ps_trunc_meta(truncated)$method, "ps")
-  expect_equal(ps_trunc_meta(truncated)$lower_bound, 0.01)
+  expect_equal(ps_trunc_meta(truncated)$lower_bound, 0.1)
 })
 
 # Missing values ------------------------------------------------------------
