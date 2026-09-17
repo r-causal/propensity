@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* Breaking change: `ps_trunc(method = "ps")` now mirrors a bound supplied
+  alone. `lower` alone bounds a binary score at `[lower, 1 - lower]`, and
+  `upper` alone at `[1 - upper, upper]`; previously the other bound took its
+  default of 0.1 or 0.9, so `lower = 0.05` bounded at `[0.05, 0.9]`. With
+  neither supplied the bounds stay `[0.1, 0.9]`, and with both supplied both
+  are used as written. A lone bound whose mirror crosses it, such as
+  `lower = 0.6`, is refused with an error of class `propensity_range_error`.
+  The default threshold for a categorical score matrix rises from 0.01 to 0.1,
+  matching the binary default and `ps_trim()`, so a matrix of ten or more
+  columns now needs an explicit `lower`.
+
 * `ps_refit()` now refits a binary score trimmed from a two-level
   `nnet::multinom()` fit. It previously failed with an error from
   `predict()`, which offers no `"response"` type for a `multinom`; the refit

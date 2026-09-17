@@ -773,14 +773,20 @@ check_bounds_not_missing <- function(
   )
 }
 
-check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
+check_lower_upper <- function(
+  lower,
+  upper,
+  hint = NULL,
+  call = rlang::caller_env()
+) {
   check_bounds_not_missing(lower, upper, call = call)
 
   if (lower >= upper) {
     abort(
       c(
         "{.arg lower} must be smaller than {.arg upper}",
-        x = "{.arg lower} is {lower} and {.arg upper} is {upper}"
+        x = "{.arg lower} is {lower} and {.arg upper} is {upper}",
+        i = hint
       ),
       call = call,
       error_class = "propensity_range_error"

@@ -75,13 +75,9 @@
 #'
 #'   * `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
 #'     categorical exposures, only `lower` is used, as the symmetric threshold
-#'     delta, and it defaults to 0.1. That default deliberately differs from the
-#'     0.01 threshold [ps_trunc()] uses for categorical exposures: trimming
-#'     discards the units it selects, so its default follows common-support
-#'     trimming practice, whereas truncation keeps every unit and only pins the
-#'     most extreme scores back. With `k` exposure levels, a threshold of `1/k`
-#'     or larger cannot be met by every column of a row that sums to one, and is
-#'     an error.
+#'     delta, and it defaults to 0.1, the default [ps_trunc()] uses as well.
+#'     With `k` exposure levels, a threshold of `1/k` or larger cannot be met by
+#'     every column of a row that sums to one, and is an error.
 #'   * `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
 #'   * `"pref"`: preference score bounds (defaults: 0.3, 0.7).
 #'   * `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are data-driven).

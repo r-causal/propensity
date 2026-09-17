@@ -67,15 +67,8 @@ For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
 \itemize{
 \item \code{method = "adaptive"}: Not used. Supplying either is ignored with a
 warning.
-\item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
-categorical exposures, \code{lower} is the truncation threshold delta
-(default: 0.01) and \code{upper} is ignored. That default deliberately differs
-from the 0.1 threshold \code{\link[=ps_trim]{ps_trim()}} uses for categorical exposures:
-truncation keeps every unit and only pins the most extreme scores back to
-the threshold, so its default is a gentle winsorization, whereas trimming
-discards the units it selects and follows common-support trimming
-practice. With \code{k} exposure levels, a threshold of \code{1/k} or larger cannot
-be met by every column of a row that sums to one, and is an error.
+\item \code{method = "ps"}: Propensity score values. See \strong{The \code{"ps"} bounds}
+below.
 \item \code{method = "pctl"}: Quantile probabilities (defaults: 0.05 and 0.95;
 categorical defaults: 0.01 and 0.99).
 \item \code{method = "cr"}: Ignored; bounds are determined by the data.
@@ -138,6 +131,28 @@ For \strong{binary exposures}, each propensity score \eqn{e_i} is bounded:
 
 For \strong{categorical exposures}, values below the threshold are set to the
 threshold and each row is renormalized to sum to 1.
+\subsection{The \code{"ps"} bounds}{
+
+With \code{method = "ps"}, both paths default to a floor of 0.1. For a \strong{binary
+exposure}, a bound supplied alone implies its mirror: \code{lower} alone bounds
+the scores at \verb{[lower, 1 - lower]}, and \code{upper} alone at
+\verb{[1 - upper, upper]}. With neither supplied, the bounds are \verb{[0.1, 0.9]};
+with both supplied, both are used as written, so an asymmetric bound must be
+given in full. The mirror follows from the weights: an untreated unit's ATE
+weight is \eqn{1/(1 - e)}, so a floor on \eqn{e} alone would bound the
+treated weights and leave the untreated ones unbounded. A lone \code{lower} of
+0.5 or more, or a lone \code{upper} of 0.5 or less, meets or crosses its own
+mirror and is an error of class \code{propensity_range_error}. \code{lower = 1/c} gives the bounds
+\code{method = "adaptive"} computes for the same \eqn{c}.
+
+For a \strong{categorical exposure}, \code{lower} is the threshold \eqn{\delta}
+(default 0.1) applied to every column, after which each row is renormalized,
+and \code{upper} is not read and is recorded as \code{NA}. With \code{k} exposure levels, a
+threshold of \code{1/k} or larger cannot be met by every column of a row that
+sums to one and is an error, so an exposure with ten or more levels needs an
+explicit \code{lower} below \code{1/k}.
+}
+
 \subsection{The adaptive bound}{
 
 \code{method = "adaptive"} bounds a binary propensity score at

@@ -53,15 +53,8 @@
 #' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
 #'   * `method = "adaptive"`: Not used. Supplying either is ignored with a
 #'     warning.
-#'   * `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9). For
-#'     categorical exposures, `lower` is the truncation threshold delta
-#'     (default: 0.01) and `upper` is ignored. That default deliberately differs
-#'     from the 0.1 threshold [ps_trim()] uses for categorical exposures:
-#'     truncation keeps every unit and only pins the most extreme scores back to
-#'     the threshold, so its default is a gentle winsorization, whereas trimming
-#'     discards the units it selects and follows common-support trimming
-#'     practice. With `k` exposure levels, a threshold of `1/k` or larger cannot
-#'     be met by every column of a row that sums to one, and is an error.
+#'   * `method = "ps"`: Propensity score values. See **The `"ps"` bounds**
+#'     below.
 #'   * `method = "pctl"`: Quantile probabilities (defaults: 0.05 and 0.95;
 #'     categorical defaults: 0.01 and 0.99).
 #'   * `method = "cr"`: Ignored; bounds are determined by the data.
@@ -97,6 +90,27 @@
 #'
 #' For **categorical exposures**, values below the threshold are set to the
 #' threshold and each row is renormalized to sum to 1.
+#'
+#' ## The `"ps"` bounds
+#'
+#' With `method = "ps"`, both paths default to a floor of 0.1. For a **binary
+#' exposure**, a bound supplied alone implies its mirror: `lower` alone bounds
+#' the scores at `[lower, 1 - lower]`, and `upper` alone at
+#' `[1 - upper, upper]`. With neither supplied, the bounds are `[0.1, 0.9]`;
+#' with both supplied, both are used as written, so an asymmetric bound must be
+#' given in full. The mirror follows from the weights: an untreated unit's ATE
+#' weight is \eqn{1/(1 - e)}, so a floor on \eqn{e} alone would bound the
+#' treated weights and leave the untreated ones unbounded. A lone `lower` of
+#' 0.5 or more, or a lone `upper` of 0.5 or less, meets or crosses its own
+#' mirror and is an error of class `propensity_range_error`. `lower = 1/c` gives the bounds
+#' `method = "adaptive"` computes for the same \eqn{c}.
+#'
+#' For a **categorical exposure**, `lower` is the threshold \eqn{\delta}
+#' (default 0.1) applied to every column, after which each row is renormalized,
+#' and `upper` is not read and is recorded as `NA`. With `k` exposure levels, a
+#' threshold of `1/k` or larger cannot be met by every column of a row that
+#' sums to one and is an error, so an exposure with ten or more levels needs an
+#' explicit `lower` below `1/k`.
 #'
 #' ## The adaptive bound
 #'
@@ -377,13 +391,27 @@ ps_trunc.default <- function(
   check_ps_range(.propensity, call = call)
 
   if (method == "ps") {
-    if (is.null(lower)) {
+    # A bound supplied alone implies its mirror. An untreated unit's weight is
+    # 1 / (1 - e), so a floor on the score with no matching ceiling would leave
+    # one arm's weights bounded and the other's not.
+    mirror_hint <- NULL
+    if (is.null(lower) && is.null(upper)) {
       lower <- 0.1
-    }
-    if (is.null(upper)) {
       upper <- 0.9
+    } else if (is.null(upper)) {
+      check_bounds_not_missing(lower, 0, call = call)
+      upper <- 1 - lower
+      mirror_hint <- "{.arg upper} was not supplied, so it is the mirror of
+        {.arg lower}, 1 - {.arg lower}. Supply both to bound the scores
+        asymmetrically."
+    } else if (is.null(lower)) {
+      check_bounds_not_missing(1, upper, call = call)
+      lower <- 1 - upper
+      mirror_hint <- "{.arg lower} was not supplied, so it is the mirror of
+        {.arg upper}, 1 - {.arg upper}. Supply both to bound the scores
+        asymmetrically."
     }
-    check_lower_upper(lower, upper, call = call)
+    check_lower_upper(lower, upper, hint = mirror_hint, call = call)
 
     lb <- lower
     ub <- upper
@@ -548,10 +576,14 @@ ps_trunc.matrix <- function(
 
   if (method == "ps") {
     # Symmetric truncation
-    if (is.null(lower)) {
-      lower <- 0.01
-    } # Default threshold
-    delta <- lower # Use lower as delta for consistency
+    # The same default floor as the vector path and as `ps_trim()`'s matrix
+    # path. `upper` is not read: a column floor followed by renormalization
+    # has no upper bound.
+    defaulted <- is.null(lower)
+    if (defaulted) {
+      lower <- 0.1
+    }
+    delta <- lower
 
     # A threshold at or above 1/k cannot be met by every column of a row that
     # sums to one, so there is no truncation rule left to apply. Both numbers
@@ -566,7 +598,11 @@ ps_trunc.matrix <- function(
           x = "{.arg lower} is {.val {delta}}, and 1/k is {limit} for the {k}
                column{?s} the scores hold.",
           i = "No row summing to one can hold every score above 1/k, so a
-               threshold there leaves no rule to apply."
+               threshold there leaves no rule to apply.",
+          i = if (defaulted) {
+            "{.arg lower} was not supplied, and {.val {delta}} is its default.
+             Supply a {.arg lower} below {limit}."
+          }
         ),
         error_class = "propensity_range_error",
         call = call

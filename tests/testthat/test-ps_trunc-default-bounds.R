@@ -124,7 +124,7 @@ test_that("the glm route mirrors a lone bound", {
   expect_equal(bounds_of(from_upper), c(lower = 0.05, upper = 0.95))
   expect_equal(bounds_of(from_neither), c(lower = 0.1, upper = 0.9))
   expect_equal(
-    as.numeric(from_lower),
+    unname(as.numeric(from_lower)),
     as.numeric(ps_trunc(unname(fitted(fit)), method = "ps", lower = 0.05))
   )
 })
