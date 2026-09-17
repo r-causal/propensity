@@ -36,7 +36,13 @@ underlying variables let the transformation be recomputed from the retained
 rows. Pass \code{.data} when the data the model was fit on can no longer be
 reached.}
 
-\item{...}{Additional arguments passed to \link[stats:update]{update()}.}
+\item{...}{Additional arguments passed to \link[stats:update]{update()}, such
+as \code{subset} or \code{weights}. Each is evaluated against the retained rows, the
+data the refit is handed: a name is read from their columns first and
+otherwise from the environment \code{ps_refit()} was called from, so
+\code{subset = x1 > 0} refits on the retained rows where \code{x1} is positive. A
+logical or index vector supplied instead indexes the retained rows, not
+the full data.}
 }
 \value{
 A \code{ps_trim} object with re-estimated propensity scores for retained

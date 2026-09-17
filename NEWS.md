@@ -12,6 +12,13 @@
   wherever a fitted model's scores are extracted, so the result matches the
   equivalent binomial `glm()`, and `ps_refit()` refits such a trimmed score.
 
+* `ps_refit()` now evaluates an expression passed through `...`, such as
+  `subset = x1 > 0` or `weights = w`, against the retained rows, reading a
+  column of those rows first and any other name from the calling environment.
+  It previously failed with "object not found" unless the argument was an
+  already evaluated vector. A logical or index vector still indexes the
+  retained rows.
+
 * New `wt_trunc()` bounds extreme weights on the scale of the weights
   themselves, so it applies to weights for any exposure type, including the
   density-ratio weights of a continuous exposure. It offers four methods:

@@ -2523,7 +2523,13 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'   underlying variables let the transformation be recomputed from the retained
 #'   rows. Pass `.data` when the data the model was fit on can no longer be
 #'   reached.
-#' @param ... Additional arguments passed to [update()][stats::update].
+#' @param ... Additional arguments passed to [update()][stats::update], such
+#'   as `subset` or `weights`. Each is evaluated against the retained rows, the
+#'   data the refit is handed: a name is read from their columns first and
+#'   otherwise from the environment `ps_refit()` was called from, so
+#'   `subset = x1 > 0` refits on the retained rows where `x1` is positive. A
+#'   logical or index vector supplied instead indexes the retained rows, not
+#'   the full data.
 #'
 #' @details
 #' ## Composing with a `subset`
@@ -2645,11 +2651,13 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   # to work again would choose among rows it was never about. It is dropped
   # unless the caller names one, which is an instruction of its own.
   data_sub <- .data[meta$keep_idx, , drop = FALSE]
-  refit_call <- if ("subset" %in% ...names()) {
-    stats::update(model, data = data_sub, ..., evaluate = FALSE)
-  } else {
-    stats::update(model, data = data_sub, subset = NULL, ..., evaluate = FALSE)
+  refit_args <- refit_extra_args(rlang::enquos(...), data_sub)
+  if (!"subset" %in% names(refit_args)) {
+    refit_args <- c(refit_args, list(subset = NULL))
   }
+  refit_call <- rlang::inject(
+    stats::update(model, data = data_sub, !!!refit_args, evaluate = FALSE)
+  )
   refit_model <- eval(refit_call_function(refit_call, model))
 
   if (density_record) {
@@ -2701,6 +2709,26 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
     x = new_ps,
     ps_trim_meta = meta
   )
+}
+
+# The arguments a caller passes to `ps_refit()` for `update()`, evaluated
+# before the refit call is built. The call is evaluated in the frame of
+# `ps_refit()`, where an expression such as `subset = x1 > 0` names nothing, so
+# each argument is read here the way the fitting function would read it on the
+# retained rows: a column of `data` first, and otherwise a name in the frame the
+# argument was written in. `formula.` is a formula to update the model's own
+# with rather than something to read from the rows, so it is read without them.
+refit_extra_args <- function(dots, data) {
+  arg_names <- names(dots)
+  values <- lapply(seq_along(dots), function(i) {
+    if (identical(arg_names[[i]], "formula.")) {
+      rlang::eval_tidy(dots[[i]])
+    } else {
+      rlang::eval_tidy(dots[[i]], data = data)
+    }
+  })
+  names(values) <- arg_names
+  values
 }
 
 # Whether `model` can refit what the trimming record was made from. A record of
