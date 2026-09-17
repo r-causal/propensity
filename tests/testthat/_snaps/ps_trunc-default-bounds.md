@@ -18,6 +18,33 @@
       x `lower` is 0.6 and `upper` is 0.4
       i `lower` was not supplied, so it is the mirror of `upper`, 1 - `upper`. Supply both to bound the scores asymmetrically.
 
+# a supplied bound must be a single score inside the unit interval
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! For `method = "ps"`, `lower` must be a propensity score strictly between 0 and 1.
+      x `lower` is -0.1.
+
+---
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! For `method = "ps"`, `upper` must be a propensity score strictly between 0 and 1.
+      x `upper` is 1.2.
+
+---
+
+    Code
+      expr
+    Condition <propensity_length_error>
+      Error in `ps_trunc()`:
+      ! For `method = "ps"`, `lower` must be a single propensity score.
+      x `lower` has 2 values.
+
 # the default floor meets the 1/k refusal at ten or more levels
 
     Code

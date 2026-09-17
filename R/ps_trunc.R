@@ -94,7 +94,8 @@
 #' ## The `"ps"` bounds
 #'
 #' With `method = "ps"`, both paths default to a floor of 0.1. For a **binary
-#' exposure**, a bound supplied alone implies its mirror: `lower` alone bounds
+#' exposure**, each bound supplied must be a single number strictly between 0
+#' and 1, and a bound supplied alone implies its mirror: `lower` alone bounds
 #' the scores at `[lower, 1 - lower]`, and `upper` alone at
 #' `[1 - upper, upper]`. With neither supplied, the bounds are `[0.1, 0.9]`;
 #' with both supplied, both are used as written, so an asymmetric bound must be
@@ -394,18 +395,18 @@ ps_trunc.default <- function(
     # A bound supplied alone implies its mirror. An untreated unit's weight is
     # 1 / (1 - e), so a floor on the score with no matching ceiling would leave
     # one arm's weights bounded and the other's not.
+    check_ps_trunc_bound(lower, "lower", call = call)
+    check_ps_trunc_bound(upper, "upper", call = call)
     mirror_hint <- NULL
     if (is.null(lower) && is.null(upper)) {
       lower <- 0.1
       upper <- 0.9
     } else if (is.null(upper)) {
-      check_bounds_not_missing(lower, 0, call = call)
       upper <- 1 - lower
       mirror_hint <- "{.arg upper} was not supplied, so it is the mirror of
         {.arg lower}, 1 - {.arg lower}. Supply both to bound the scores
         asymmetrically."
     } else if (is.null(lower)) {
-      check_bounds_not_missing(1, upper, call = call)
       lower <- 1 - upper
       mirror_hint <- "{.arg lower} was not supplied, so it is the mirror of
         {.arg upper}, 1 - {.arg upper}. Supply both to bound the scores
@@ -1070,6 +1071,49 @@ abort_adaptive_categorical <- function(call = rlang::caller_env()) {
   )
 }
 
+# A `"ps"` bound is a propensity score, and the one supplied alone is also
+# mirrored, so anything other than a single score inside the unit interval
+# would bound the scores somewhere the caller did not mean, or be recycled
+# across them. A missing bound keeps the refusal every method gives it. An
+# unset bound takes its default or its mirror and is not checked here.
+check_ps_trunc_bound <- function(bound, arg, call = rlang::caller_env()) {
+  if (is.null(bound)) {
+    return(invisible(NULL))
+  }
+
+  if (length(bound) != 1) {
+    abort(
+      c(
+        "For {.code method = \"ps\"}, {.arg {arg}} must be a single
+         propensity score.",
+        x = "{.arg {arg}} has {length(bound)} value{?s}."
+      ),
+      error_class = "propensity_length_error",
+      call = call
+    )
+  }
+
+  if (arg == "lower") {
+    check_bounds_not_missing(bound, 0.5, call = call)
+  } else {
+    check_bounds_not_missing(0.5, bound, call = call)
+  }
+
+  if (is.numeric(bound) && bound > 0 && bound < 1) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "For {.code method = \"ps\"}, {.arg {arg}} must be a propensity score
+       strictly between 0 and 1.",
+      x = "{.arg {arg}} is {.val {bound}}."
+    ),
+    error_class = "propensity_range_error",
+    call = call
+  )
+}
+
 # Gruber et al. (2022) cap the weights at c = sqrt(n) log(n) / 5. Flooring a
 # binary score at 1/c caps the treated units' unstabilized ATE weights at c, and
 # capping it at 1 - 1/c does the same for the untreated units, so the bound is
@@ -1158,6 +1202,26 @@ new_ps_trunc <- function(x, meta) {
       inherit_base_type = TRUE
     )
   }
+}
+
+# A propensity score cast to a `ps_trunc` from a class that records no
+# truncation arrives unbounded: its record names the whole unit interval and no
+# unit pinned to it. The scores are still read as propensity scores. The public
+# bound check refuses an endpoint as a `"ps"` bound, so the record is written
+# here rather than by truncating at 0 and 1.
+cast_to_unbounded_ps_trunc <- function(x, call = rlang::caller_env()) {
+  check_ps_range(x, call = call)
+
+  new_ps_trunc(
+    x,
+    meta = list(
+      method = "ps",
+      lower_bound = 0,
+      upper_bound = 1,
+      truncated_idx = integer(0),
+      n_obs = length(x)
+    )
+  )
 }
 
 # The positional half of a truncation record. The rest of it, the method and its

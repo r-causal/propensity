@@ -13,6 +13,10 @@
   neither supplied the bounds stay `[0.1, 0.9]`, and with both supplied both
   are used as written. A lone bound whose mirror crosses it, such as
   `lower = 0.6`, is refused with an error of class `propensity_range_error`.
+  Each supplied bound must be a single number strictly between 0 and 1; one
+  outside that interval is refused with an error of class
+  `propensity_range_error`, and one of any other length with an error of class
+  `propensity_length_error`.
   The default threshold for a categorical score matrix rises from 0.01 to 0.1,
   matching the binary default and `ps_trim()`, so a matrix of ten or more
   columns now needs an explicit `lower`.

@@ -71,6 +71,25 @@ test_that("c() of one psw keeps its names, and a NULL alongside it", {
   expect_identical(c(w, NULL), w)
 })
 
+test_that("c() of one psw whose record no longer covers it returns it unchanged", {
+  # A model frame shortens a weights column and re-attaches the attributes, so
+  # the record describes more observations than the weights hold.
+  w <- single_trimmed_psw()
+  stale <- w
+  attributes(stale) <- NULL
+  stale <- stale[1:15]
+  attributes(stale) <- attributes(w)
+
+  combined <- expect_silent(c(stale))
+
+  expect_identical(combined, stale)
+  expect_identical(ps_trim_meta(combined), ps_trim_meta(w))
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
 test_that("c() of one psw still refuses what vctrs refuses", {
   w <- single_trimmed_psw()
 

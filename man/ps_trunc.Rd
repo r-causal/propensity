@@ -134,7 +134,8 @@ threshold and each row is renormalized to sum to 1.
 \subsection{The \code{"ps"} bounds}{
 
 With \code{method = "ps"}, both paths default to a floor of 0.1. For a \strong{binary
-exposure}, a bound supplied alone implies its mirror: \code{lower} alone bounds
+exposure}, each bound supplied must be a single number strictly between 0
+and 1, and a bound supplied alone implies its mirror: \code{lower} alone bounds
 the scores at \verb{[lower, 1 - lower]}, and \code{upper} alone at
 \verb{[1 - upper, upper]}. With neither supplied, the bounds are \verb{[0.1, 0.9]};
 with both supplied, both are used as written, so an asymmetric bound must be

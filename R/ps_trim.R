@@ -2313,7 +2313,7 @@ vec_cast.ps_trim.ps_trunc <- function(x, to, ...) {
 #' @export
 vec_cast.ps_trunc.ps_trim <- function(x, to, ...) {
   # Convert ps_trim to ps_trunc (ignore NAs)
-  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+  cast_to_unbounded_ps_trunc(vec_data(x))
 }
 
 #' @export
@@ -2791,18 +2791,19 @@ refit_extra_args <- function(
 }
 
 # Whether evaluating `quo` against `data` failed because a name it reads is
-# found neither among the columns nor in the environment it was written in.
-# Base R gives that failure no class of its own, so it is recognized by its
-# message, compared in the session's language against each name the
-# expression reads and cannot find. A `.data$` lookup of a missing column
-# raises rlang's own class.
+# found neither among the columns nor in the environment it was written in,
+# which is the failure passing `.data` can repair. Base R gives that failure no
+# class of its own, so it is recognized by its message, compared in the
+# session's language against each such name. A `.data$` lookup of a missing
+# column raises rlang's own class. A `.env$` lookup is never a column, so the
+# names it reads are left out and its failure passes through.
 is_unfound_name_error <- function(cnd, quo, data) {
   if (inherits(cnd, "rlang_error_data_pronoun_not_found")) {
     return(TRUE)
   }
 
   env <- rlang::quo_get_env(quo)
-  read <- all.vars(rlang::quo_get_expr(quo))
+  read <- unique(column_candidate_names(rlang::quo_get_expr(quo)))
   unfound <- read[
     !read %in% names(data) &
       !vapply(read, exists, logical(1), envir = env)
@@ -2813,6 +2814,42 @@ is_unfound_name_error <- function(cnd, quo, data) {
 
   messages <- gettextf("object '%s' not found", unfound, domain = "R")
   conditionMessage(cnd) %in% messages
+}
+
+# The bare names an expression reads as variables, which are the names that
+# could be columns. A function's name, the field after `$` or `@`, and a
+# lookup through either pronoun are not.
+column_candidate_names <- function(expr) {
+  if (is.symbol(expr)) {
+    name <- as.character(expr)
+    if (name %in% c("", ".data", ".env")) {
+      return(character())
+    }
+    return(name)
+  }
+  if (!is.call(expr)) {
+    return(character())
+  }
+
+  head <- expr[[1]]
+  args <- as.list(expr)[-1]
+  if (identical(head, quote(`$`)) || identical(head, quote(`@`))) {
+    args <- args[1]
+  }
+  if (
+    (identical(head, quote(`$`)) || identical(head, quote(`[[`))) &&
+      identical(args[[1]], quote(.env))
+  ) {
+    args <- args[-1]
+    if (identical(head, quote(`$`))) {
+      args <- list()
+    }
+  }
+  if (!is.symbol(head)) {
+    args <- c(list(head), args)
+  }
+
+  unlist(lapply(args, column_candidate_names), use.names = FALSE)
 }
 
 # Whether `model` can refit what the trimming record was made from. A record of

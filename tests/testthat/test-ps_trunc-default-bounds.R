@@ -72,6 +72,49 @@ test_that("a lone bound whose mirror crosses it is refused", {
   expect_s3_class(cnd, "propensity_range_error")
 })
 
+test_that("a supplied bound must be a single score inside the unit interval", {
+  expect_propensity_error(
+    ps_trunc(default_bounds_ps, method = "ps", lower = -0.1)
+  )
+  expect_propensity_error(
+    ps_trunc(default_bounds_ps, method = "ps", upper = 1.2)
+  )
+  expect_propensity_error(
+    ps_trunc(default_bounds_ps, method = "ps", lower = c(0.1, 0.2))
+  )
+
+  # Both bounds supplied are checked as well, before they are compared.
+  expect_error(
+    ps_trunc(default_bounds_ps, method = "ps", lower = 0, upper = 0.9),
+    class = "propensity_range_error"
+  )
+  expect_error(
+    ps_trunc(default_bounds_ps, method = "ps", lower = 0.1, upper = 1),
+    class = "propensity_range_error"
+  )
+  expect_error(
+    ps_trunc(default_bounds_ps, method = "ps", lower = "0.1"),
+    class = "propensity_range_error"
+  )
+  expect_error(
+    ps_trunc(default_bounds_ps, method = "ps", upper = c(0.8, 0.9)),
+    class = "propensity_length_error"
+  )
+  expect_error(
+    ps_trunc(default_bounds_ps, method = "ps", upper = numeric()),
+    class = "propensity_length_error"
+  )
+
+  # A missing bound keeps the refusal it has under every method, and names
+  # only the bound that is missing.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(default_bounds_ps, method = "ps", lower = NA_real_),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_missing_value_error")
+  expect_no_match(conditionMessage(cnd), "upper", fixed = TRUE)
+})
+
 test_that("a lower bound of 1/c gives the bounds the adaptive method computes", {
   set.seed(4211)
   ps <- runif(200, 0.01, 0.99)

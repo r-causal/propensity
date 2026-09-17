@@ -3263,11 +3263,44 @@ test_that("ps_refit() passes through an argument's own error", {
   )
 })
 
+test_that("ps_refit() passes through a missing name read through .env", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  # `.env` never reads a column, so passing `.data` cannot help.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, subset = x1 > .env$no_such_cutoff_zz),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "error")
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+  expect_match(conditionMessage(cnd), "no_such_cutoff_zz", fixed = TRUE)
+
+  # The same holds with the data passed.
+  cnd <- rlang::catch_cnd(
+    ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > .env$no_such_cutoff_zz
+    ),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+})
+
 test_that("ps_refit() relabels a missing name in the caller's language", {
   fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
   trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
 
   withr::local_language("fr")
+  skip_if(
+    identical(
+      gettext("object '%s' not found", domain = "R"),
+      "object '%s' not found"
+    ),
+    "R's French message catalog is not installed"
+  )
   expect_error(
     ps_refit(trimmed, fit, subset = x2 > 0),
     class = "propensity_no_data_error"

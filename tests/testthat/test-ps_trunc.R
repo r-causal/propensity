@@ -1095,6 +1095,69 @@ test_that("casting a double to a ps_trunc keeps the truncation of the target", {
   expect_equal(meta$n_obs, 2L)
 })
 
+# A score from a class that records no truncation is cast to a `ps_trunc`
+# unbounded: the record names the whole unit interval and no pinned unit.
+expect_unbounded_trunc_record <- function(x, n) {
+  expect_identical(
+    ps_trunc_meta(x),
+    list(
+      method = "ps",
+      lower_bound = 0,
+      upper_bound = 1,
+      truncated_idx = integer(0),
+      n_obs = n
+    )
+  )
+}
+
+cast_fixture_ps <- c(0.05, 0.15, 0.3, 0.45, 0.6, 0.72, 0.85, 0.95, 0.4, 0.55)
+
+test_that("assigning a trimmed score into a ps_trunc keeps its record", {
+  trimmed <- ps_trim(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+
+  x <- truncated
+  x[2] <- trimmed[2]
+  expect_s3_class(x, "ps_trunc")
+  expect_equal(vctrs::vec_data(x), vctrs::vec_data(truncated))
+  expect_identical(ps_trunc_meta(x), ps_trunc_meta(truncated))
+
+  assigned <- vctrs::vec_assign(truncated, 2, trimmed[2])
+  expect_identical(assigned, x)
+})
+
+test_that("casting a ps_trim to a ps_trunc records no bound", {
+  trimmed <- ps_trim(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+
+  out <- vctrs::vec_cast(trimmed, truncated)
+  expect_s3_class(out, "ps_trunc")
+  expect_identical(vctrs::vec_data(out), vctrs::vec_data(trimmed))
+  expect_unbounded_trunc_record(out, 10L)
+
+  # A score that arrived missing passes through as well.
+  with_missing <- ps_trim(c(cast_fixture_ps, NA), lower = 0.1, upper = 0.9)
+  out <- vctrs::vec_cast(with_missing, truncated)
+  expect_identical(vctrs::vec_data(out), vctrs::vec_data(with_missing))
+  expect_unbounded_trunc_record(out, 11L)
+})
+
+test_that("casting a psw to a ps_trunc records no bound", {
+  truncated <- ps_trunc(cast_fixture_ps, lower = 0.1, upper = 0.9)
+  w <- psw(c(0.2, 0.5, 0.7), estimand = "ate")
+
+  out <- vctrs::vec_cast(w, truncated)
+  expect_s3_class(out, "ps_trunc")
+  expect_identical(vctrs::vec_data(out), c(0.2, 0.5, 0.7))
+  expect_unbounded_trunc_record(out, 3L)
+
+  # Weights outside the unit interval are not propensity scores.
+  expect_error(
+    vctrs::vec_cast(psw(c(2, 3), estimand = "ate"), truncated),
+    class = "propensity_range_error"
+  )
+})
+
 test_that("combining a ps_trunc with an integer keeps the propensity scores", {
   x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
 

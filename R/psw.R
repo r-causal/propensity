@@ -2020,5 +2020,5 @@ vec_cast.psw.ps_trunc <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.ps_trunc.psw <- function(x, to, ...) {
-  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+  cast_to_unbounded_ps_trunc(vec_data(x))
 }
