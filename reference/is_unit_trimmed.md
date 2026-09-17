@@ -27,13 +27,12 @@ marked as trimmed carries no record at all, rather than name trimmed
 units at stale positions. Query the `ps_trim` object the record was
 written for instead.
 
-That check counts observations, which a reordering does not change, so
-it does not catch one. A `ps_trim` reordered through vctrs rather than
-through `[`, by `vctrs::vec_slice(x, 5:1)` or
+That check counts observations, which a reordering does not change, so a
+`ps_trim` or `psw` reordered through vctrs rather than through `[`, by
+`vctrs::vec_slice(x, 5:1)` or
 [`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
-keeps a record written for the old order, and a `psw` keeps one through
-any same-length operation, a reordering included. `is_unit_trimmed()`
-answers from those positions and names the wrong units. See
+drops the positions instead, and `is_unit_trimmed()` refuses the result.
+See
 [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
 and [psw](https://r-causal.github.io/propensity/reference/psw.md) for
 the whole contract.

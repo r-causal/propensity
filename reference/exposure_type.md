@@ -95,12 +95,18 @@ of weights for a binary or categorical exposure:
   and
   [`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
   take with `sigma_method = "mle"`, and `"supplied"` for a `.sigma` the
-  caller gave.
+  caller gave. Weights built from a dose model trimmed with
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+  record where the trim's spread came from.
 
-- `sigma_value`, the single spread the caller supplied, and `NULL` for a
-  spread estimated from the residuals, by either estimator, and for one
-  supplied per observation. A spread that is one number is a constant
-  the weights can be rebuilt from, which is what
+- `sigma_value`, the single spread the weights were read at when it was
+  not estimated by the weight function itself: one the caller supplied,
+  or the spread a dose model trimmed with
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+  holds in its record, which is recorded whatever its source. It is
+  `NULL` for a spread estimated from the residuals, by either estimator,
+  and for one supplied per observation. A spread that is one number is a
+  constant the weights can be rebuilt from, which is what
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
   needs of it; a spread that changes with the observation is not, so the
   record holds where it came from and nothing more.

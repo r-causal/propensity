@@ -1874,10 +1874,34 @@ from the propensity score model on every evaluation, so a weight that is
 no longer a deterministic function of that model breaks the sandwich
 variance. Supplying weights built from a modified score errors on either
 standard error method; refit the weights from the unmodified propensity
-score model. An outcome model fit without weights also errors on either
-method. The outcome model must not carry an offset term on either
-method, since neither the stacked outcome score nor the linearization
-influence functions thread an offset; supplying one errors.
+score model. Density-trimmed weights for a continuous exposure
+([`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+with `method = "density"` or `method = "resid"`) carry the trim record
+and are refused as trimmed weights.
+
+Weights bounded with
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+are refused as well, with their own error, for a different reason. A
+bound on the weights is not a smooth function of the propensity score
+model's parameters, so the stacked sandwich would report an interval for
+the truncated estimand without saying so. The four methods also differ
+in kind. A fixed bound (`"wt"`, or `"adaptive"`, which depends only on
+the sample size) is known before the weights are seen, while a
+percentile bound (`"pctl"`, or `"count"`, which bounds at an observed
+weight) is estimated from the weights it modifies and would need an
+estimating equation of its own. Only the fixed case is a candidate for
+support, and relaxing the refusal for it first requires a simulation
+that measures the coverage of the M-estimation interval with the bound
+inside the stack. Until then, rebuild the weights without
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+and report the M-estimation interval, or fit the outcome model with the
+truncated weights and report a fixed-weight sandwich, stating that it
+conditions on the bound.
+
+An outcome model fit without weights also errors on either method. The
+outcome model must not carry an offset term on either method, since
+neither the stacked outcome score nor the linearization influence
+functions thread an offset; supplying one errors.
 
 For a binary or categorical exposure, the outcome model formula must
 contain the exposure. The counterfactual designs are built by setting
@@ -1932,11 +1956,15 @@ default or with one number to use
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
 
 It bears on a `stabilization_score` in the same way. A score written per
-observation is one value per unit, so it does not survive the rows being
-restricted: subsetting the weights drops it, and a model frame that
-drops incomplete rows leaves it at the length the weights were built at.
-Either way the record still names a score as the numerator and the score
-in hand no longer describes the observations being weighted, so
+observation is one value per unit. Subsetting or reordering the weights
+with `[` carries it along, but a slice that cannot place it, such as
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html)
+or
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+drops it, and a model frame that drops incomplete rows leaves it at the
+length the weights were built at. Either way the record still names a
+score as the numerator and the score in hand no longer describes the
+observations being weighted, so
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 refuses before anything is solved, with an error of class
 `propensity_ipw_stabilization_score_error`. Rebuild the weights on the
@@ -1999,11 +2027,14 @@ interval so that a cell at an endpoint is bounded rather than refused,
 while
 [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
 holds the open interval as the weight functions do. Weights built from a
-truncated score are their own refusal here, since
+trimmed or truncated score are their own refusal here, as are weights
+bounded with
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md),
+since
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-cannot yet account for a modified propensity score, so a separated fit
-is repaired for the weight functions rather than for this one. See
-**Propensity scores at 0 and 1** in
+cannot yet account for a modified propensity score or a truncated
+weight, so a separated fit is repaired for the weight functions rather
+than for this one. See **Propensity scores at 0 and 1** in
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
 for the remedy.
 

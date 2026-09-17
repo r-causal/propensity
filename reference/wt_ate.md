@@ -346,6 +346,15 @@ wt_cens(
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
   refuses such weights; see **Continuous exposures** in Details.
 
+  A dose model trimmed with
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+  holds the spread its trim was read at, and weights built from it are
+  read at that spread, which
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  records as `sigma_value` as well. A `.sigma` supplied with such a trim
+  would be a second spread for the same density and is refused with an
+  error of class `propensity_sigma_error`.
+
   Must be numeric, and applies only to continuous exposures. `.sigma`
   sits in the third position, which is where a value meant for
   `exposure_type` arrives when it is supplied without a name, so
@@ -508,6 +517,13 @@ wt_cens(
   family the weights were built from is recorded on the result and read
   back with
   [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md).
+
+  Weights built from a dose model trimmed with
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+  are read under the family the trim recorded, whatever the default
+  says. A `.density` that names another family, other parameters, or
+  another `sigma_method` is refused with an error of class
+  `propensity_density_error`.
 
 - numerator:
 

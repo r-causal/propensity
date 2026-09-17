@@ -45,6 +45,13 @@ A named list with elements:
   Logical, `TRUE` if the model was refit via
   [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md).
 
+- `focal_inverted`:
+
+  For a vector of scores, logical, `TRUE` if the scores are one minus
+  the probability the fitted model reports, which
+  [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+  reads to predict the same level.
+
 Additional method-specific elements (e.g. `cutoff`, `delta`, `lambda`)
 may also be present.
 
@@ -76,6 +83,9 @@ ps_trim_meta(trimmed)
 #> 
 #> $upper
 #> [1] 0.9
+#> 
+#> $focal_inverted
+#> [1] FALSE
 #> 
 #> $keep_idx
 #> [1] 2 3

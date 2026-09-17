@@ -32,6 +32,12 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
   an object whose record was dropped or no longer covers it raises an
   error of class `propensity_missing_meta_error`; see
   [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md).
+  A single column of a data frame made from a trimmed score matrix
+  raises an error of class `propensity_method_error`; refit the matrix
+  before converting it. Truncated scores from
+  [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+  keep every unit, so refitting them would return the original model's
+  scores, and they raise an error of class `propensity_method_error`.
 
 - model:
 
@@ -39,7 +45,19 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
   a [glm](https://rdrr.io/r/stats/glm.html) or
   [multinom](https://rdrr.io/pkg/nnet/man/multinom.html) object). The
   model is refit via [update()](https://rdrr.io/r/stats/update.html) on
-  the retained subset.
+  the retained subset. Trimmed propensity scores are refit only by a
+  model of the probability of the exposure; a model of a conditional
+  mean, such as a [`stats::lm()`](https://rdrr.io/r/stats/lm.html) fit
+  or a gaussian [`stats::glm()`](https://rdrr.io/r/stats/glm.html),
+  never produced them and raises an error of class
+  `propensity_model_family_error`. A dose model trimmed with
+  `method = "density"` or `method = "resid"` is refit only by a model of
+  the dose's conditional mean, such as a gaussian
+  [`stats::glm()`](https://rdrr.io/r/stats/glm.html),
+  [`stats::lm()`](https://rdrr.io/r/stats/lm.html),
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html), or
+  [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit, and any
+  other model, such as one of a probability, raises the same error.
 
 - .data:
 
@@ -58,7 +76,16 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 - ...:
 
   Additional arguments passed to
-  [update()](https://rdrr.io/r/stats/update.html).
+  [update()](https://rdrr.io/r/stats/update.html), such as `subset` or
+  `weights`. Each is evaluated against the retained rows, the data the
+  refit is handed: a name is read from their columns first and otherwise
+  from the environment `ps_refit()` was called from, so
+  `subset = x1 > 0` refits on the retained rows where `x1` is positive.
+  A logical or index vector supplied instead indexes the retained rows,
+  not the full data. The `.data` and `.env` pronouns are available to
+  tell a column from a variable of the same name. Without `.data`, the
+  retained rows hold only the variables `model` reads, so an argument
+  naming any other column needs the data frame passed to `.data`.
 
 ## Value
 
@@ -73,6 +100,14 @@ is no longer calibrated and
 [`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)
 answers `FALSE` for the result.
 
+For a trimmed dose model, the retained values are the refit model's
+conditional means, and the spread in the record is re-estimated from the
+retained residuals under the recorded density family, unless the trim
+was made at a `.sigma` the caller supplied, which is kept. The recorded
+threshold describes the cut that was made and is left as it was, so the
+refit model can place a retained unit's conditional density below it;
+nothing is trimmed again.
+
 ## Details
 
 ### Composing with a `subset`
@@ -84,6 +119,15 @@ further, to the retained rows, so the original `subset` is dropped from
 the call rather than put to work a second time on rows it was never
 about. A `subset` passed through `...` is an instruction of its own and
 is honored.
+
+### Which level a refit predicts
+
+For a vector of scores, the refit predicts the probability of the level
+the scores describe: when
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+was given a model with its first level named as focal, the refit reports
+one minus the model's prediction, and for scores supplied directly it
+reports the level the model predicts by default.
 
 ### Arguments read from outside the formula
 

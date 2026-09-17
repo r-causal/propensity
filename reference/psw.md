@@ -21,6 +21,7 @@ new_psw(
   truncated = FALSE,
   calibrated = FALSE,
   stabilization_score = NULL,
+  wt_truncated = FALSE,
   ...
 )
 
@@ -31,7 +32,8 @@ psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  wt_truncated = FALSE
 )
 
 is_psw(x)
@@ -82,6 +84,12 @@ as_psw(x, estimand = NULL)
   positive and finite. Defaults to `NULL`, meaning no fixed score was
   supplied.
 
+- wt_truncated:
+
+  Logical. Were the weights themselves truncated? This is separate from
+  `truncated`, which describes the propensity scores the weights were
+  built from. Defaults to `FALSE`.
+
 - ...:
 
   Additional attributes stored on the object (developer use only).
@@ -117,6 +125,11 @@ as_psw(x, estimand = NULL)
 - `is_psw()` tests whether an object is a `psw` vector.
 
 - `is_stabilized()` returns `TRUE` if the weights are stabilized.
+
+- [`is_wt_truncated()`](https://r-causal.github.io/propensity/reference/is_wt_truncated.md)
+  returns `TRUE` if the weights themselves were truncated, which is
+  recorded apart from whether the propensity scores they were built from
+  were.
 
 - `stabilization_score()` returns the user-supplied stabilization score,
   or `NULL` when none was recorded or when a per-observation score was
@@ -178,26 +191,26 @@ retain metadata.
 An operation between two `psw` objects merges what each of them records.
 Two different estimands are pasted together, and an estimand only one
 operand names stands for the result; the result is stabilized only when
-both operands are, and it is marked as trimmed, truncated, or calibrated
-when either operand is. The remaining attributes, the
-`stabilization_score`, the records left by a modified propensity score,
-the attributes describing a categorical exposure, and the exposure
-records, are carried by agreement: one only a single operand records
-carries, and one both record with the same value carries. One they
-record differently is dropped, since neither value describes the result,
-and a warning of class `propensity_metadata_conflict_warning` names it,
-once for each attribute dropped that way and whatever order the inputs
-were given in. The rule is applied per operation, so an attribute one
-operation drops for a disagreement can be carried again by a later
-operation whose operands agree. Two density records agree when they name
-the same family with the same parameters and the same numerator and
-residual spread, so weights built the same way in two calls agree even
-though each call builds its own copy of the function that evaluates the
-density. A numerator estimated by a fitted model is read the same way:
-two records agree when their models write the same formula and were fit
-to the same coefficients, and a model is not compared against the
-marginal density or against no numerator at all, both of which are
-disagreements.
+both operands are, and it is marked as trimmed, truncated, calibrated,
+or weight-truncated when either operand is. The remaining attributes,
+the `stabilization_score`, the records left by a modified propensity
+score, the attributes describing a categorical exposure, and the
+exposure records, are carried by agreement: one only a single operand
+records carries, and one both record with the same value carries. One
+they record differently is dropped, since neither value describes the
+result, and a warning of class `propensity_metadata_conflict_warning`
+names it, once for each attribute dropped that way and whatever order
+the inputs were given in. The rule is applied per operation, so an
+attribute one operation drops for a disagreement can be carried again by
+a later operation whose operands agree. Two density records agree when
+they name the same family with the same parameters and the same
+numerator and residual spread, so weights built the same way in two
+calls agree even though each call builds its own copy of the function
+that evaluates the density. A numerator estimated by a fitted model is
+read the same way: two records agree when their models write the same
+formula and were fit to the same coefficients, and a model is not
+compared against the marginal density or against no numerator at all,
+both of which are disagreements.
 
 A `density_meta` record describes a continuous exposure, so a result
 that drops `exposure_type` for a disagreement drops the density record
@@ -210,24 +223,83 @@ score without comment.
 
 Combining `psw` objects with [`c()`](https://rdrr.io/r/base/c.html)
 preserves the class only when all metadata matches; mismatched metadata
-produces a warning and falls back to a plain numeric vector.
-Concatenation appends one set of observations to another, so the
-positions a modification record names would describe units from the
-other input; those records are dropped from the result whether or not
-the inputs agree on them. The categorical attributes name exposure
-levels rather than positions, and the exposure records describe the
-exposure rather than any unit, so both carry when the inputs agree.
+produces a warning and falls back to a plain numeric vector. The
+trimming, truncation, and weight truncation records are compared by what
+they say about the modification: weights built from scores trimmed or
+truncated differently, from a trim that was refit and one that was not,
+or truncated at different bounds describe different estimands and are
+combined only as numbers. Weights flagged as modified with no record
+agree with any record. Concatenation appends one set of observations to
+another, so the positions a record names would describe units from the
+other input; the result keeps each record without its positions, which
+[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md),
+the printed footer, and a later combine still read. The calibration
+record (`ps_calib_meta`) names the curve the scores were calibrated with
+rather than any position, the categorical attributes name exposure
+levels, and the exposure records describe the exposure rather than any
+unit, so all of them carry by the agreement rule above: two calibration
+records agree when they name the same method and smoothing.
+
+[`c()`](https://rdrr.io/r/base/c.html) of a single `psw` returns it
+unchanged, with every record. A combine through vctrs drops the
+positional records even when it is handed a single input:
+`vctrs::vec_c(x)`, `dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`, and
+an ungrouped
+[`dplyr::reframe()`](https://dplyr.tidyverse.org/reference/reframe.html)
+all rebuild the column, so a later
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md),
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md),
+or
+[`is_unit_wt_truncated()`](https://r-causal.github.io/propensity/reference/is_wt_truncated.md)
+on the result refuses it.
 
 Subsetting with `[` preserves class and attributes for vector
-subscripts. Two kinds of attribute hold one value per observation and so
-cannot be re-indexed for a subset: a `stabilization_score` with more
-than one value, and the records left by a modified propensity score
-(`ps_trim_meta`, `ps_trunc_meta`, and `ps_calib_meta`). Where an
-operation goes through vctrs, these are carried when the result comes
-back at the length they were recorded on and dropped when it does not.
-Any same-length operation keeps them, a reordering or a subscript with
-duplicates included, so the positions a record names can end up
-describing different observations than they did.
+subscripts. Two kinds of attribute hold one value per observation. The
+records left by a trimmed or truncated propensity score (`ps_trim_meta`
+and `ps_trunc_meta`) or by truncating the weights themselves
+(`psw_trunc_meta`) name units by position, and `[` is handed the
+subscript, so it re-indexes each record onto the result:
+[`rev()`](https://rdrr.io/r/base/rev.html),
+[`sort()`](https://rdrr.io/r/base/sort.html), `x[order(x)]`, and a
+shorter subset all return records naming the units at their new
+positions. Any other operation through vctrs is not handed a subscript,
+so it keeps the positions only where every unit stays at its place, as
+in elementwise arithmetic, and otherwise drops them, at any length:
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+[`dplyr::filter()`](https://dplyr.tidyverse.org/reference/filter.html),
+[`unique()`](https://rdrr.io/r/base/unique.html),
+[`rep_len()`](https://rdrr.io/r/base/rep.html), and
+[`vctrs::vec_c()`](https://vctrs.r-lib.org/reference/vec_c.html) of a
+single input all return weights whose records name no units. A dropped
+record keeps its method, its bounds, and whether the model was refit, so
+[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md),
+the printed footer, and the bound comparison of a later combine still
+read it. Subassignment with `[<-` and `is.na<-` moves no unit and keeps
+the records whole; `[<-` refuses a value whose records describe a
+different modification, and accepts one with no record. A `[<-` of a
+value modified the same way that writes a missing weight leaves that
+unit listed as retained in the record, as `is.na<-` on a `psw` does;
+`is.na<-` on a `ps_trim` score instead removes the unit from its
+retained set. vctrs' own assignment,
+[`vctrs::vec_assign()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+reaches the same restore a slice does and cannot be told apart from one,
+so it drops the positions, and so do the helpers built on it or on a
+combine, such as
+[`tidyr::replace_na()`](https://tidyr.tidyverse.org/reference/replace_na.html),
+[`dplyr::coalesce()`](https://dplyr.tidyverse.org/reference/coalesce.html),
+[`dplyr::if_else()`](https://dplyr.tidyverse.org/reference/if_else.html),
+and
+[`dplyr::case_when()`](https://dplyr.tidyverse.org/reference/case-and-replace-when.html).
+
+A `stabilization_score` with more than one value, on the weights or on a
+component of a
+[`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+product, is in the order of the units too. `[` subsets it with the
+weights, elementwise arithmetic keeps it, and any other route through
+vctrs that brings back observations drops it with a warning of class
+`propensity_stabilization_score_warning`, since the score may no longer
+line up with the weights.
 
 Dropping the `stabilization_score` warns, because the score was supplied
 by the user and the weights can be recomputed on the subset. Dropping a
@@ -244,9 +316,10 @@ on trimmed propensity scores come back out of every outcome model fit on
 them still carrying a record written for rows that are no longer there.
 
 Honesty therefore lives at query time.
-[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md),
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md),
 and
-[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+[`is_unit_wt_truncated()`](https://r-causal.github.io/propensity/reference/is_wt_truncated.md)
 answer by position, so each checks that the record covers the vector it
 is given and raises an error of class `propensity_missing_meta_error`
 when it does not, or when weights marked as modified carry no record at
@@ -257,10 +330,11 @@ record present and refuses only when the record is absent entirely.
 
 The result of any of these operations stays a `psw` and keeps every
 other attribute, including its stabilized, trimmed, truncated, and
-calibrated status, the attributes describing a categorical exposure,
-which name the exposure levels rather than the units, and the exposure
-records, which describe the exposure rather than any unit, so both mean
-the same thing at any length.
+calibrated status, the calibration record, which names a calibration
+curve rather than any unit, the attributes describing a categorical
+exposure, which name the exposure levels rather than the units, and the
+exposure records, which describe the exposure rather than any unit, so
+all of them mean the same thing at any length.
 
 Matrix or array subscripts intentionally drop the `psw` class and return
 a plain numeric vector via base R linear indexing; this is required so

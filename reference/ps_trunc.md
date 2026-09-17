@@ -13,7 +13,7 @@ observations from analysis).
 ``` r
 ps_trunc(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -53,12 +53,17 @@ ps_trunc(
 
 - method:
 
-  One of `"ps"`, `"pctl"`, or `"cr"`:
+  One of `"ps"`, `"adaptive"`, `"pctl"`, or `"cr"`:
 
   - `"ps"` (default): Truncate directly on propensity score values.
     Values outside `[lower, upper]` are set to the nearest bound. For
     categorical exposures, applies symmetric truncation using `lower` as
     the threshold (delta) and renormalizes rows to sum to 1.
+
+  - `"adaptive"`: Truncate at \\\[1/c, 1 - 1/c\]\\ with \\c = \sqrt{n}
+    \log(n) / 5\\ (Gruber et al., 2022), where \\n\\ is the number of
+    propensity scores present (binary exposures only). See **The
+    adaptive bound** below.
 
   - `"pctl"`: Truncate at quantiles of the propensity score
     distribution. The `lower` and `upper` arguments specify quantile
@@ -82,17 +87,11 @@ ps_trunc(
 
   Bounds for truncation. Interpretation depends on `method`:
 
-  - `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9).
-    For categorical exposures, `lower` is the truncation threshold delta
-    (default: 0.01) and `upper` is ignored. That default deliberately
-    differs from the 0.1 threshold
-    [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
-    uses for categorical exposures: truncation keeps every unit and only
-    pins the most extreme scores back to the threshold, so its default
-    is a gentle winsorization, whereas trimming discards the units it
-    selects and follows common-support trimming practice. With `k`
-    exposure levels, a threshold of `1/k` or larger cannot be met by
-    every column of a row that sums to one, and is an error.
+  - `method = "adaptive"`: Not used. Supplying either is ignored with a
+    warning.
+
+  - `method = "ps"`: Propensity score values. See **The `"ps"` bounds**
+    below.
 
   - `method = "pctl"`: Quantile probabilities (defaults: 0.05 and 0.95;
     categorical defaults: 0.01 and 0.99).
@@ -168,6 +167,75 @@ For **binary exposures**, each propensity score \\e_i\\ is bounded:
 For **categorical exposures**, values below the threshold are set to the
 threshold and each row is renormalized to sum to 1.
 
+### The `"ps"` bounds
+
+With `method = "ps"`, both paths default to a floor of 0.1. For a
+**binary exposure**, each bound supplied must be a single number
+strictly between 0 and 1, and a bound supplied alone implies its mirror:
+`lower` alone bounds the scores at `[lower, 1 - lower]`, and `upper`
+alone at `[1 - upper, upper]`. With neither supplied, the bounds are
+`[0.1, 0.9]`; with both supplied, both are used as written, so an
+asymmetric bound must be given in full. The mirror follows from the
+weights: an untreated unit's ATE weight is \\1/(1 - e)\\, so a floor on
+\\e\\ alone would bound the treated weights and leave the untreated ones
+unbounded. A lone `lower` of 0.5 or more, or a lone `upper` of 0.5 or
+less, meets or crosses its own mirror and is an error of class
+`propensity_range_error`. `lower = 1/c` gives the bounds
+`method = "adaptive"` computes for the same \\c\\.
+
+For a **categorical exposure**, `lower` is the threshold \\\delta\\
+(default 0.1) applied to every column, after which each row is
+renormalized, and `upper` is not read and is recorded as `NA`. With `k`
+exposure levels, a threshold of `1/k` or larger cannot be met by every
+column of a row that sums to one and is an error, so an exposure with
+ten or more levels needs an explicit `lower` below `1/k`.
+
+### The adaptive bound
+
+`method = "adaptive"` bounds a binary propensity score at \\\[1/c, 1 -
+1/c\]\\, where \\c = \sqrt{n} \log(n) / 5\\ is the weight bound of
+Gruber et al. (2022) and \\n\\ counts the scores that are present, as in
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md).
+At \\n = 1000\\, \\c\\ is 43.7 and the bounds are 0.023 and 0.977. The
+bound adapts to the sample size alone, loosening as \\n\\ grows, and
+leaves the estimand alone. `ps_trim(method = "adaptive")` instead adapts
+to the estimated scores, tightening under poor overlap, and changes the
+estimand to the population it keeps.
+
+For **unstabilized ATE weights** the bound is the weight bound written
+on the score scale. A treated unit's weight is \\1/e\\, so the floor
+\\1/c\\ caps the treated weights at \\c\\; an untreated unit's weight is
+\\1/(1 - e)\\, so the ceiling \\1 - 1/c\\ caps the untreated weights at
+\\c\\.
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+on the result therefore gives the weights
+`wt_trunc(wt_ate(ps, .exposure), method = "adaptive")` gives, with one
+difference, provided every unit's exposure is observed. (A unit with a
+present score and a missing exposure counts toward \\n\\ here but has no
+weight for
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+to count, so the two bounds then differ.) The difference is this: a
+treated unit above \\1 - 1/c\\ or an untreated unit below \\1/c\\, whose
+weight is already close to 1, is moved to that bound too, and its weight
+rises to \\c / (c - 1)\\. Every weight above \\c / (c - 1)\\ is the same
+under either route. A lower bound alone would not do the same work,
+since no floor on \\e\\ bounds an untreated unit's weight.
+
+For **stabilized ATE weights** the equivalence does not carry over as it
+stands. Stabilizing multiplies each arm's weights by that arm's
+prevalence, so the treated weights are capped at \\P(A = 1) c\\ and the
+untreated weights at \\P(A = 0) c\\, which agree only when the two arms
+are equally common.
+
+The bounds cross when \\c \< 2\\, which holds for fewer than 15 scores,
+so `"adaptive"` needs at least 15 scores present and raises an error of
+class `propensity_range_error` otherwise. It is refused for categorical
+exposures with an error of class `propensity_method_error`: truncating a
+categorical score renormalizes each row, which moves scores the bound
+never reached, so the bound no longer caps the weights. A two-level
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) fit is
+read as one binary score and accepted.
+
 **Arithmetic behavior**: Arithmetic operations on `ps_trunc` objects
 return plain numeric vectors. Once propensity scores are transformed
 (e.g., into weights), the result is no longer a propensity score.
@@ -187,7 +255,23 @@ read as one score per unit; a
 [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) of
 three or more levels is read as one column per level. Those are the
 shapes `predict(fit, type = "response")` and `fitted(fit)` give, and
-truncating a fit bounds exactly what bounding those values would.
+truncating a fit bounds exactly what bounding those values would. A
+model of a continuous exposure's conditional mean, such as a
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html) fit or a gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html), has no propensity
+score to bound and raises an error of class
+`propensity_model_family_error`. A dose has two routes instead: trim the
+dose model with `ps_trim(method = "density")`, which sets aside the
+units whose dose is implausible under the model, or build the weights
+with
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and bound them with
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md),
+which keeps every unit. There is no density method here: a floor on a
+dose's conditional density is a bound on its unstabilized weights, the
+ones `wt_ate(stabilize = FALSE)` builds, which
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+already applies.
 
 The methods that read an exposure (`"cr"`, and every method on the
 categorical route) take it from the model when `.exposure` is not
@@ -225,25 +309,56 @@ A `ps_trunc` records which units were winsorized as positions among the
 observations it was written for, along with how many observations that
 was. Operations that hand this package the subscript re-index those
 positions onto the result: subsetting with `[`,
-[`sort()`](https://rdrr.io/r/base/sort.html),
-[`unique()`](https://rdrr.io/r/base/unique.html), and
+[`sort()`](https://rdrr.io/r/base/sort.html), and
 [`rep()`](https://rdrr.io/r/base/rep.html) all return a record written
 for what they return, and a subscript naming a position more than once
 reports that unit at every place it now holds.
+[`unique()`](https://rdrr.io/r/base/unique.html) does the same when it
+can, as described below.
 
 Operations that change how many observations there are without supplying
 a subscript cannot re-index the record, and it is dropped rather than
 worked out from the values, since a score that arrived equal to a bound
 is indistinguishable from one this function pinned there.
 [`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
-which is how filtering, joining, and grouped summaries in dplyr reach a
-column, is the usual route, and dropping the record there raises a
-warning of class `propensity_trunc_record_warning`. Combining with
-[`c()`](https://rdrr.io/r/base/c.html) drops it without comment, because
-concatenation appends one set of observations to another and the
-prototype it builds the result from holds no positions to lose. The
-values, the class, and the method and its bounds are untouched either
-way.
+which is how filtering, joining, and grouped verbs in dplyr reach a
+column, is the usual route, and combining two or more vectors with
+[`c()`](https://rdrr.io/r/base/c.html) is another, because concatenation
+appends one set of observations to another. The record is dropped
+without comment on every route, since most of these length changes build
+vectors the caller never holds, such as the pieces a grouped verb slices
+a column into. The values, the class, and the method and its bounds are
+untouched.
+
+A combine drops the positions even when it is handed a single vector.
+[`c()`](https://rdrr.io/r/base/c.html) of one `ps_trunc` returns it
+unchanged, record included, but `vctrs::vec_c(x)`,
+`dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`, and an ungrouped
+[`dplyr::reframe()`](https://dplyr.tidyverse.org/reference/reframe.html)
+rebuild the column, so a later
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+on the result refuses it.
+
+[`unique()`](https://rdrr.io/r/base/unique.html) keeps one element for
+each distinct value, or one row for each distinct row of a matrix of
+scores, and that element or row stands for every unit holding the same
+scores. A matrix comes back as a matrix of the same class with its
+column names. The record is re-indexed onto the result when all of the
+merged units share one status, and dropped otherwise: a score or row
+that arrived where truncation would put it and one truncation moved
+there merge into a single element or row that neither status describes.
+
+[`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) and
+[`tibble::as_tibble()`](https://tibble.tidyverse.org/reference/as_tibble.html)
+turn a matrix of scores into a data frame whose columns are `ps_trunc`
+vectors carrying the matrix's record, one row per unit, so the weight
+functions read the data frame as they read the matrix and a subset of
+its rows re-indexes the record. A data frame whose columns are not all
+truncated with the same record is refused by the weight functions with
+an error of class `propensity_matrix_type_error`. A matrix without
+column names gives columns named `V1`, `V2`, and so on, which the weight
+functions then refuse because they name no exposure level, so name the
+columns after the exposure levels before converting.
 
 A record can also outlive the observations it describes, because it
 travels by routes vctrs does not see: growing a `ps_trunc` by
@@ -254,17 +369,24 @@ raises an error of class `propensity_missing_meta_error` when it does
 not, rather than name truncated units at stale positions.
 
 That check compares how many observations the record was written for
-against how many the object holds, which a reordering does not change.
-An operation that reorders the observations through vctrs, rather than
-through `[`, therefore keeps a record written for the order they used to
-be in: `vctrs::vec_slice(x, 5:1)` and
-[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
-both return the values in a new order under positions still naming the
-old one, and
+against how many the object holds, which a reordering does not change,
+so a route that could reorder the observations without saying how drops
+the positions instead, at any length:
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+[`dplyr::filter()`](https://dplyr.tidyverse.org/reference/filter.html),
+and
+[`vctrs::vec_assign()`](https://vctrs.r-lib.org/reference/vec_slice.html)
+and the helpers built on it return a `ps_trunc` whose record keeps its
+method and bounds and names no units, and
 [`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
-answers from those positions and names the wrong units. Subsetting with
-`[` is handed the subscript and re-indexes, so reorder with `[`, or put
-the propensity scores in the order you want before truncating them.
+refuses it. Subsetting with `[`,
+[`sort()`](https://rdrr.io/r/base/sort.html),
+[`unique()`](https://rdrr.io/r/base/unique.html), and
+[`rep()`](https://rdrr.io/r/base/rep.html) know where the units went and
+re-index the record, and `[<-` and `is.na<-` move no unit and keep it,
+so reorder with `[`, or put the propensity scores in the order you want
+before truncating them.
 
 Casting a numeric vector into a `ps_trunc` with
 [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
@@ -279,6 +401,12 @@ them.
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009).
 Dealing with limited overlap in estimation of average treatment effects.
 *Biometrika*, 96(1), 187–199.
+
+Gruber, S., Phillips, R. V., Lee, H., & van der Laan, M. J. (2022).
+Data-adaptive selection of the propensity score truncation level for
+inverse-probability-weighted and targeted maximum likelihood estimators
+of marginal point treatment effects. *American Journal of Epidemiology*,
+191(9), 1640–1651.
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.
@@ -358,6 +486,69 @@ ps_t
 #> 0.6625838 0.7959533 0.5278943 0.6555095 0.3485232 0.6526880 0.2148033 0.5002503 
 #>       193       194       195       196       197       198       199       200 
 #> 0.2017086 0.4490035 0.7798096 0.6994296 0.4022315 0.3161761 0.3003833 0.3261363 
+
+# Bound at [1/c, 1 - 1/c], c = sqrt(n) log(n) / 5, which caps the
+# unstabilized ATE weights at c
+ps_trunc(ps, method = "adaptive")
+#> <ps_trunc{[0.0667,0.933], method=adaptive}[200]>
+#>          1          2          3          4          5          6          7 
+#> 0.29130945 0.57075108 0.85905610 0.24188201 0.49930600 0.55675915 0.70111217 
+#>          8          9         10         11         12         13         14 
+#> 0.45616038 0.90360175 0.48343119 0.63124383 0.75946160 0.41536130 0.26038808 
+#>         15         16         17         18         19         20         21 
+#> 0.88271762 0.08138334 0.73842370 0.53075430 0.76556830 0.63492785 0.91319684 
+#>         22         23         24         25         26         27         28 
+#> 0.22831221 0.85929151 0.90074563 0.52240328 0.07067804 0.64616425 0.36283492 
+#>         29         30         31         32         33         34         35 
+#> 0.71991248 0.59835929 0.70811028 0.60598256 0.77767823 0.44421858 0.31896179 
+#>         36         37         38         39         40         41         42 
+#> 0.36306016 0.14322616 0.29004079 0.37229372 0.45432638 0.41776382 0.11488981 
+#>         43         44         45         46         47         48         49 
+#> 0.30383148 0.89567605 0.68132246 0.90420941 0.43851237 0.49643227 0.47114693 
+#>         50         51         52         53         54         55         56 
+#> 0.22853370 0.30461661 0.91106441 0.37148631 0.81286633 0.25873963 0.11414425 
+#>         57         58         59         60         61         62         63 
+#> 0.43384531 0.75024682 0.78928598 0.86970860 0.13513287 0.90793306 0.33654034 
+#>         64         65         66         67         68         69         70 
+#> 0.56364237 0.65332558 0.30883775 0.11057616 0.39273691 0.54380444 0.29162947 
+#>         71         72         73         74         75         76         77 
+#> 0.28588182 0.60895559 0.48265241 0.63557725 0.50650310 0.28903045 0.81741170 
+#>         78         79         80         81         82         83         84 
+#> 0.71542388 0.77321135 0.19063586 0.76227170 0.14729713 0.37883165 0.19704028 
+#>         85         86         87         88         89         90         91 
+#> 0.09015377 0.88712592 0.34869977 0.44407832 0.41687627 0.62339015 0.86069650 
+#>         92         93         94         95         96         97         98 
+#> 0.87087680 0.23144748 0.19942258 0.17403983 0.21830407 0.90120123 0.52313647 
+#>         99        100        101        102        103        104        105 
+#> 0.30362260 0.36168114 0.77735817 0.59076288 0.43616553 0.32537093 0.29914802 
+#>        106        107        108        109        110        111        112 
+#> 0.90944557 0.75107099 0.90586644 0.40782418 0.42643359 0.26296452 0.45324867 
+#>        113        114        115        116        117        118        119 
+#> 0.64482877 0.82621843 0.66742471 0.64087231 0.80536462 0.79070955 0.54983317 
+#>        120        121        122        123        124        125        126 
+#> 0.31739822 0.80710169 0.55848264 0.87443145 0.40539762 0.25943605 0.66098916 
+#>        127        128        129        130        131        132        133 
+#> 0.34471960 0.68515350 0.14349137 0.14104940 0.69696824 0.60908833 0.73684079 
+#>        134        135        136        137        138        139        140 
+#> 0.10873282 0.80221987 0.80013088 0.76929476 0.71864309 0.91483892 0.18341413 
+#>        141        142        143        144        145        146        147 
+#> 0.36621714 0.62923918 0.31186040 0.54417339 0.70974601 0.34863085 0.68942181 
+#>        148        149        150        151        152        153        154 
+#> 0.66398099 0.31191915 0.26932313 0.75829753 0.47513393 0.70433975 0.30320896 
+#>        155        156        157        158        159        160        161 
+#> 0.81312672 0.20209485 0.71399686 0.64292343 0.59270175 0.69183710 0.62638476 
+#>        162        163        164        165        166        167        168 
+#> 0.35248559 0.44862887 0.61653394 0.20743922 0.29421813 0.91200893 0.10030845 
+#>        169        170        171        172        173        174        175 
+#> 0.22101971 0.76117824 0.78001428 0.73021961 0.53643993 0.60725607 0.28957526 
+#>        176        177        178        179        180        181        182 
+#> 0.34899794 0.45004081 0.28292513 0.72620510 0.15731275 0.26232917 0.21667429 
+#>        183        184        185        186        187        188        189 
+#> 0.62478778 0.24167062 0.66258378 0.79595325 0.52789428 0.65550948 0.34852324 
+#>        190        191        192        193        194        195        196 
+#> 0.65268801 0.21480329 0.50025030 0.20170859 0.44900347 0.77980959 0.69942959 
+#>        197        198        199        200 
+#> 0.40223149 0.31617609 0.30038326 0.32613630 
 
 # Truncate at the 1st and 99th percentiles
 ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
@@ -532,7 +723,7 @@ if (rlang::is_installed("nnet")) {
   ps_trunc(multinomial_fit, method = "ps")
 }
 #> ℹ Using exposure variable "trt" from the propensity score model
-#> <ps_trunc_matrix[200 x 3]; truncated 0 of 200; method=ps[0.0100,Inf]>
+#> <ps_trunc_matrix[200 x 3]; truncated 0 of 200; method=ps[0.1000,Inf]>
 #>            a         b         c
 #> 1  0.3368013 0.3782680 0.2849307
 #> 2  0.3285505 0.3863809 0.2850686

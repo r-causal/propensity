@@ -25,13 +25,12 @@ marked as truncated carries no record at all, rather than name truncated
 units at stale positions. Query the `ps_trunc` object the record was
 written for instead.
 
-That check counts observations, which a reordering does not change, so
-it does not catch one. An operation that reorders through vctrs rather
-than through `[`, such as `vctrs::vec_slice(x, 5:1)` or
+That check counts observations, which a reordering does not change, so a
+`ps_trunc` or `psw` reordered through vctrs rather than through `[`,
+such as by `vctrs::vec_slice(x, 5:1)` or
 [`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
-keeps a record written for the old order, and a `psw` keeps one through
-any same-length operation, a reordering included. `is_unit_truncated()`
-answers from those positions and names the wrong units. See
+drops the positions instead, and `is_unit_truncated()` refuses the
+result. See
 [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
 and [psw](https://r-causal.github.io/propensity/reference/psw.md) for
 the whole contract.

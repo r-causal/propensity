@@ -304,6 +304,9 @@ data-driven threshold:</p>
 <span><span class="co">#&gt; $upper</span></span>
 <span><span class="co">#&gt; [1] 0.9</span></span>
 <span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $focal_inverted</span></span>
+<span><span class="co">#&gt; [1] FALSE</span></span>
+<span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $keep_idx</span></span>
 <span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 </span></span>
 <span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 </span></span>
@@ -315,7 +318,8 @@ data-driven threshold:</p>
 <span><span class="co">#&gt;  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $trimmed_idx</span></span>
-<span><span class="co">#&gt; [1] 19 59</span></span>
+<span><span class="co">#&gt; 19 59 </span></span>
+<span><span class="co">#&gt; 19 59 </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $n_obs</span></span>
 <span><span class="co">#&gt; [1] 100</span></span></code></pre></div>
@@ -376,6 +380,14 @@ clipped:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_truncated</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt;   1.092   1.440   1.780   2.028   2.111  12.583</span></span></code></pre></div>
+<p><code>method = "adaptive"</code> chooses the bounds from the sample
+size alone: it bounds the scores at <code>[1/c, 1 - 1/c]</code> with
+<code>c = sqrt(n) * log(n) / 5</code> (Gruber et al., 2022), which caps
+unstabilized ATE weights at <code>c</code>. <code><a href="../reference/wt_trunc.html">wt_trunc()</a></code>
+places that bound on the weights themselves:</p>
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ps_trunc_adapt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_trunc.html">ps_trunc</a></span><span class="op">(</span><span class="va">ps</span>, method <span class="op">=</span> <span class="st">"adaptive"</span><span class="op">)</span></span>
+<span><span class="va">wts_bounded_ate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_trunc.html">wt_trunc</a></span><span class="op">(</span><span class="va">wts_ate</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="which-approach">Which approach?<a class="anchor" aria-label="anchor" href="#which-approach"></a>
@@ -383,9 +395,14 @@ clipped:</p>
 <p>These aren’t mutually exclusive. In general: overlap estimands like
 <code><a href="../reference/wt_ate.html">wt_ato()</a></code> are the easiest path if your research question
 allows it. Trimming (followed by <code><a href="../reference/ps_refit.html">ps_refit()</a></code>) is the
-standard choice when you need ATE but have near-violations of
-positivity. Truncation is a lighter touch when you want to keep the full
-sample.</p>
+standard choice for near-violations of positivity, but it changes the
+target population: the estimate describes the units the trim keeps, not
+the whole sample, so report it as such. Truncation, with
+<code>ps_trunc(method = "adaptive")</code> on the scores or
+<code><a href="../reference/wt_trunc.html">wt_trunc()</a></code> on the weights, is the choice when you must keep
+the full sample. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> accepts neither trimmed nor
+truncated weights, so an analysis that uses them needs its interval
+computed another way.</p>
 </div>
 </div>
 <div class="section level2">
@@ -399,7 +416,7 @@ under each exposure level, then three effect measures built from those
 risks: the risk difference, log risk ratio, and log odds ratio. The
 <code>contrast</code> column names the level a mean row belongs to and
 the pair of levels an effect measure compares:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
@@ -422,7 +439,7 @@ the pair of levels an effect measure compares:</p>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> pulls the estimates into a data
 frame:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span>
 <span><span class="co">#&gt;      term contrast  estimate  std.error statistic      p.value</span></span>
 <span><span class="co">#&gt; 1    mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
@@ -433,7 +450,7 @@ frame:</p>
 <p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
 ratios on their natural scale. The standard errors, z-statistics, and
 p-values stay on the log scale:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   term contrast  estimate  std.error statistic      p.value</span></span>
 <span><span class="co">#&gt; 1 mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
@@ -448,7 +465,7 @@ p-values stay on the log scale:</p>
 <p>For continuous outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns the marginal mean
 under each exposure level and the difference between them. Use
 <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> for the outcome model:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">z</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span><span class="va">dat</span><span class="op">$</span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="va">y_cont</span></span>
 <span><span class="va">outcome_cont</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_cont</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
@@ -489,7 +506,7 @@ density of the dose over the conditional density the model fits.
 dose the model was fit on. The ratio is stabilized by default, since the
 unstabilized version carries the exposure’s own units and has a heavy
 right tail; pass <code>stabilize = FALSE</code> to turn that off.</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">13</span><span class="op">)</span></span>
 <span><span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">+</span> <span class="fl">0.7</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">-</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span><span class="va">dat</span><span class="op">$</span><span class="va">y_dose</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">+</span> <span class="fl">0.4</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
@@ -512,7 +529,7 @@ distribution, so its scale is estimated under that family rather than by
 the root mean square, which is the scale of a normal alone;
 <code><a href="../reference/dens_normal.html">dens_t()</a></code> and <code><a href="../reference/dens_normal.html">dens_laplace()</a></code> do that by
 default:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts_t</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_dose</span>, .density <span class="op">=</span> <span class="fu"><a href="../reference/dens_normal.html">dens_t</a></span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span></span>
@@ -523,7 +540,7 @@ default:</p>
 <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the dose-response slope. Its standard errors come
 from M-estimation, which stacks the dose model, the density ratio, and
 the outcome model as one system:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">msm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_dose</span> <span class="op">~</span> <span class="va">a</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts_dose</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_dose</span>, <span class="va">msm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
@@ -549,13 +566,54 @@ points at a bootstrap of the whole pipeline written by hand: resample
 the rows, refit the dose model, rebuild the weights with
 <code><a href="../reference/wt_ate.html">wt_ate()</a></code>, and refit the marginal structural model on each
 resample, then read the spread of the slope across the resamples.</p>
+<p>A dose has no propensity score in (0, 1), so <code><a href="../reference/ps_trunc.html">ps_trunc()</a></code>
+has nothing to bound. Extreme dose weights have two remedies instead.
+<code><a href="../reference/wt_trunc.html">wt_trunc()</a></code> bounds the weights once they are built and keeps
+every unit; its default bound, <code>sqrt(n) * log(n) / 5</code> (Gruber
+et al., 2022), loosens as the sample grows. <code><a href="../reference/ps_trim.html">ps_trim()</a></code> with
+<code>method = "density"</code> works on the dose model itself: it sets
+aside the units whose observed dose has the lowest conditional density,
+here the lowest 1%, and <code><a href="../reference/ps_refit.html">ps_refit()</a></code> refits the model on the
+rest:</p>
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Keep every unit and bound the weights. With 100 units the bound is 9.2,</span></span>
+<span><span class="co"># above every weight here, so no weight moves.</span></span>
+<span><span class="va">wts_bounded</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_trunc.html">wt_trunc</a></span><span class="op">(</span><span class="va">wts_dose</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="../reference/is_wt_truncated.html">is_unit_wt_truncated</a></span><span class="op">(</span><span class="va">wts_bounded</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 0</span></span>
+<span></span>
+<span><span class="co"># Set aside the units whose dose the model finds least plausible</span></span>
+<span><span class="va">dose_trimmed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_trim.html">ps_trim</a></span><span class="op">(</span><span class="va">ps_dose</span>, method <span class="op">=</span> <span class="st">"density"</span>, lower <span class="op">=</span> <span class="fl">0.01</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span></span>
+<span><span class="va">dose_refit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_refit.html">ps_refit</a></span><span class="op">(</span><span class="va">dose_trimmed</span>, <span class="va">ps_dose</span><span class="op">)</span></span>
+<span><span class="va">wts_dose_trimmed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">dose_refit</span>, <span class="va">dat</span><span class="op">$</span><span class="va">a</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_dose_trimmed</span><span class="op">)</span></span>
+<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs </span></span>
+<span><span class="co">#&gt;  0.1043  0.5671  0.7260  0.9035  0.9069  5.9154       1</span></span></code></pre></div>
+<p>Both change the estimand. The bound adds a bias that shrinks only as
+it loosens, and the trim describes only the units it keeps.
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> refuses the weights from either, so report an
+interval computed another way, such as a sandwich that holds the weights
+fixed. A heavy weight can also mean the density family is wrong, and
+then a family that fits the residuals, such as <code><a href="../reference/dens_normal.html">dens_t()</a></code>
+above, is the better remedy. See <code><a href="../reference/wt_trunc.html">?wt_trunc</a></code> for when to
+reach for which.</p>
+<p>To see what either remedy recovered, compare effective sample sizes
+with <code>halfmoon::check_ess()</code>. It reads weights as columns of
+a data frame, so add the weights before and after as separate
+columns:</p>
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">dat</span><span class="op">$</span><span class="va">w_dose</span> <span class="op">&lt;-</span> <span class="va">wts_dose</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">w_bounded</span> <span class="op">&lt;-</span> <span class="va">wts_bounded</span></span>
+<span><span class="fu">halfmoon</span><span class="fu">::</span><span class="fu">check_ess</span><span class="op">(</span><span class="va">dat</span>, .weights <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">w_dose</span>, <span class="va">w_bounded</span><span class="op">)</span>, .exposure <span class="op">=</span> <span class="va">a</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="categorical-exposures">Categorical exposures<a class="anchor" aria-label="anchor" href="#categorical-exposures"></a>
 </h3>
 <p>For multi-level treatments, pass a matrix or data frame of predicted
 probabilities with one column per level:</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Multinomial propensity scores (one column per treatment level)</span></span>
 <span><span class="va">ps_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">multinom_model</span>, type <span class="op">=</span> <span class="st">"probs"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">exposure</span>, exposure_type <span class="op">=</span> <span class="st">"categorical"</span><span class="op">)</span></span>
@@ -564,7 +622,7 @@ probabilities with one column per level:</p>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">exposure</span>, .focal_level <span class="op">=</span> <span class="st">"treated"</span><span class="op">)</span></span></code></pre></div>
 <p>The fitted model itself is also accepted, and reading the levels and
 the exposure off it saves supplying either:</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">multinom_model</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
@@ -574,7 +632,7 @@ the exposure off it saves supplying either:</p>
 reflect treatment probabilities. Where trimming and truncation deal with
 the tails, calibration reshapes the whole distribution. It supports
 logistic calibration (the default) and isotonic regression:</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ps_calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span>, method <span class="op">=</span> <span class="st">"logistic"</span>, smooth <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/is_ps_calibrated.html">is_ps_calibrated</a></span><span class="op">(</span><span class="va">ps_calibrated</span><span class="op">)</span></span>
 <span></span>
@@ -585,7 +643,7 @@ logistic calibration (the default) and isotonic regression:</p>
 </h3>
 <p><code><a href="../reference/wt_ate.html">wt_cens()</a></code> calculates inverse probability of censoring
 weights for survival or longitudinal analyses:</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Model the probability of being uncensored</span></span>
 <span><span class="va">cens_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">uncensored</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">wts_cens</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_cens</a></span><span class="op">(</span><span class="va">cens_mod</span><span class="op">)</span></span>
@@ -599,12 +657,15 @@ weights for survival or longitudinal analyses:</p>
 <p>See the function reference for details:</p>
 <ul>
 <li>
-<code><a href="../reference/wt_ate.html">?wt_ate</a></code> – Weight calculation for all estimands</li>
+<code><a href="../reference/wt_ate.html">?wt_ate</a></code>: Weight calculation for all estimands</li>
 <li>
 <code><a href="../reference/ps_trim.html">?ps_trim</a></code>, <code><a href="../reference/ps_trunc.html">?ps_trunc</a></code>,
-<code><a href="../reference/ps_calibrate.html">?ps_calibrate</a></code> – Handling extreme propensity scores</li>
+<code><a href="../reference/ps_calibrate.html">?ps_calibrate</a></code>: Handling extreme propensity scores</li>
 <li>
-<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">?ipw</a></code> – Inverse probability weighted estimation</li>
+<code><a href="../reference/wt_trunc.html">?wt_trunc</a></code>: Bounding extreme weights, including those of
+a continuous exposure</li>
+<li>
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">?ipw</a></code>: Inverse probability weighted estimation</li>
 </ul>
 </div>
 </div>

@@ -83,6 +83,11 @@ ps_trim object by ps_trim()."><meta property="og:image" content="https://r-causa
 <dt><code>refit</code></dt>
 <dd><p>Logical, <code>TRUE</code> if the model was refit via <code><a href="ps_refit.html">ps_refit()</a></code>.</p></dd>
 
+<dt><code>focal_inverted</code></dt>
+<dd><p>For a vector of scores, logical, <code>TRUE</code> if the
+scores are one minus the probability the fitted model reports, which
+<code><a href="ps_refit.html">ps_refit()</a></code> reads to predict the same level.</p></dd>
+
 
 </dl><p>Additional method-specific elements (e.g. <code>cutoff</code>, <code>delta</code>, <code>lambda</code>) may
 also be present.</p>
@@ -109,6 +114,9 @@ changed the number of observations dropped the record; see <code><a href="ps_tri
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $upper</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.9</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $focal_inverted</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $keep_idx</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2 3</span>

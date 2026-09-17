@@ -142,13 +142,17 @@ combined the way any other disagreeing records are.</p></li>
 <code>"pooled"</code> for the pooled residual root mean square, <code>"mle"</code> for a scale
 estimated under the family that reads it, which <code><a href="dens_normal.html">dens_t()</a></code> and
 <code><a href="dens_normal.html">dens_laplace()</a></code> take with <code>sigma_method = "mle"</code>, and <code>"supplied"</code> for a
-<code>.sigma</code> the caller gave.</p></li>
-<li><p><code>sigma_value</code>, the single spread the caller supplied, and <code>NULL</code> for a
-spread estimated from the residuals, by either estimator, and for one
-supplied per observation. A spread that is one
-number is a constant the weights can be rebuilt from, which is what
-<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> needs of it; a spread that changes with the observation is not,
-so the record holds where it came from and nothing more.</p></li>
+<code>.sigma</code> the caller gave. Weights built from a dose model trimmed with
+<code><a href="ps_trim.html">ps_trim()</a></code> record where the trim's spread came from.</p></li>
+<li><p><code>sigma_value</code>, the single spread the weights were read at when it was not
+estimated by the weight function itself: one the caller supplied, or the
+spread a dose model trimmed with <code><a href="ps_trim.html">ps_trim()</a></code> holds in its record, which is
+recorded whatever its source. It is <code>NULL</code> for a spread estimated from the
+residuals, by either estimator, and for one supplied per observation. A
+spread that is one number is a constant the weights can be rebuilt from,
+which is what <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> needs of it; a spread that changes with the
+observation is not, so the record holds where it came from and nothing
+more.</p></li>
 </ul><p>Weights that carry a density record print it under their values, as the
 lines <code><a href="https://rdrr.io/r/base/format.html" class="external-link">format()</a></code> renders: the density family, the numerator, and the spread,
 followed by the formula of the model supplied to <code>stabilize</code> when a model

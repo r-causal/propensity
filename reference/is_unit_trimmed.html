@@ -21,13 +21,11 @@ is given, and raises an error of class propensity_missing_meta_error when
 it does not, or when an object marked as trimmed carries no record at all,
 rather than name trimmed units at stale positions. Query the ps_trim
 object the record was written for instead.
-That check counts observations, which a reordering does not change, so it
-does not catch one. A ps_trim reordered through vctrs rather than through
-[, by vctrs::vec_slice(x, 5:1) or dplyr::arrange(), keeps a record
-written for the old order, and a psw keeps one through any same-length
-operation, a reordering included. is_unit_trimmed() answers from those
-positions and names the wrong units. See ps_trim() and psw for the
-whole contract."><meta property="og:description" content="is_unit_trimmed() returns a logical vector indicating which
+That check counts observations, which a reordering does not change, so a
+ps_trim or psw reordered through vctrs rather than through [, by
+vctrs::vec_slice(x, 5:1) or dplyr::arrange(), drops the positions
+instead, and is_unit_trimmed() refuses the result. See ps_trim() and
+psw for the whole contract."><meta property="og:description" content="is_unit_trimmed() returns a logical vector indicating which
 observations were removed by trimming. This is a per-unit query, as opposed
 to is_ps_trimmed(), which tests whether the object has been trimmed at
 all.
@@ -43,13 +41,11 @@ is given, and raises an error of class propensity_missing_meta_error when
 it does not, or when an object marked as trimmed carries no record at all,
 rather than name trimmed units at stale positions. Query the ps_trim
 object the record was written for instead.
-That check counts observations, which a reordering does not change, so it
-does not catch one. A ps_trim reordered through vctrs rather than through
-[, by vctrs::vec_slice(x, 5:1) or dplyr::arrange(), keeps a record
-written for the old order, and a psw keeps one through any same-length
-operation, a reordering included. is_unit_trimmed() answers from those
-positions and names the wrong units. See ps_trim() and psw for the
-whole contract."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
+That check counts observations, which a reordering does not change, so a
+ps_trim or psw reordered through vctrs rather than through [, by
+vctrs::vec_slice(x, 5:1) or dplyr::arrange(), drops the positions
+instead, and is_unit_trimmed() refuses the result. See ps_trim() and
+psw for the whole contract."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -104,13 +100,11 @@ is given, and raises an error of class <code>propensity_missing_meta_error</code
 it does not, or when an object marked as trimmed carries no record at all,
 rather than name trimmed units at stale positions. Query the <code>ps_trim</code>
 object the record was written for instead.</p>
-<p>That check counts observations, which a reordering does not change, so it
-does not catch one. A <code>ps_trim</code> reordered through vctrs rather than through
-<code>[</code>, by <code>vctrs::vec_slice(x, 5:1)</code> or <code><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">dplyr::arrange()</a></code>, keeps a record
-written for the old order, and a <code>psw</code> keeps one through any same-length
-operation, a reordering included. <code>is_unit_trimmed()</code> answers from those
-positions and names the wrong units. See <code><a href="ps_trim.html">ps_trim()</a></code> and <a href="psw.html">psw</a> for the
-whole contract.</p>
+<p>That check counts observations, which a reordering does not change, so a
+<code>ps_trim</code> or <code>psw</code> reordered through vctrs rather than through <code>[</code>, by
+<code>vctrs::vec_slice(x, 5:1)</code> or <code><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">dplyr::arrange()</a></code>, drops the positions
+instead, and <code>is_unit_trimmed()</code> refuses the result. See <code><a href="ps_trim.html">ps_trim()</a></code> and
+<a href="psw.html">psw</a> for the whole contract.</p>
     </div>
 
     <div class="section level2">

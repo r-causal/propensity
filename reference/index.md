@@ -42,6 +42,9 @@ Construct propensity score weights and read what they record.
   : What a set of weights records about the exposure
 - [`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
   : The model a set of weights was stabilized on
+- [`is_wt_truncated()`](https://r-causal.github.io/propensity/reference/is_wt_truncated.md)
+  [`is_unit_wt_truncated()`](https://r-causal.github.io/propensity/reference/is_wt_truncated.md)
+  : Test whether the weights themselves have been truncated
 
 ## Joint treatments
 
@@ -94,7 +97,8 @@ the model on what remains.
 
 ## Truncation
 
-Bound extreme propensity scores in place rather than dropping them.
+Bound extreme propensity scores, or the weights built from them, in
+place rather than dropping them.
 
 - [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
   : Truncate (Winsorize) Propensity Scores
@@ -109,6 +113,12 @@ Bound extreme propensity scores in place rather than dropping them.
 
 - [`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
   : Identify which units were truncated
+
+- [`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+  : Truncate (Winsorize) Propensity Score Weights
+
+- [`wt_trunc_sensitivity()`](https://r-causal.github.io/propensity/reference/wt_trunc_sensitivity.md)
+  : Tabulate Truncated Weights Over a Grid of Bounds
 
 ## Calibration and tilting
 

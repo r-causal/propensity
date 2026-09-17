@@ -22,7 +22,8 @@ ps_trunc_meta(x)
 
 A named list with truncation metadata, including:
 
-- `method` – the truncation method used (`"ps"`, `"pctl"`, or `"cr"`)
+- `method` – the truncation method used (`"ps"`, `"adaptive"`, `"pctl"`,
+  or `"cr"`)
 
 - `lower_bound`, `upper_bound` – the applied bounds
 

@@ -103,6 +103,13 @@
 
         </dt>
         <dd>The model a set of weights was stabilized on</dd>
+
+        <dt>
+
+          <code><a href="is_wt_truncated.html">is_wt_truncated()</a></code> <code><a href="is_wt_truncated.html">is_unit_wt_truncated()</a></code>
+
+        </dt>
+        <dd>Test whether the weights themselves have been truncated</dd>
       </dl></div><div class="section level2">
       <h2 id="joint-treatments">Joint treatments<a class="anchor" aria-label="anchor" href="#joint-treatments"></a></h2>
 
@@ -196,7 +203,7 @@
       </dl></div><div class="section level2">
       <h2 id="truncation">Truncation<a class="anchor" aria-label="anchor" href="#truncation"></a></h2>
 
-      <div class="section-desc"><p>Bound extreme propensity scores in place rather than dropping them.</p></div>
+      <div class="section-desc"><p>Bound extreme propensity scores, or the weights built from them, in place rather than dropping them.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -230,6 +237,20 @@
 
         </dt>
         <dd>Identify which units were truncated</dd>
+
+        <dt>
+
+          <code><a href="wt_trunc.html">wt_trunc()</a></code>
+
+        </dt>
+        <dd>Truncate (Winsorize) Propensity Score Weights</dd>
+
+        <dt>
+
+          <code><a href="wt_trunc_sensitivity.html">wt_trunc_sensitivity()</a></code>
+
+        </dt>
+        <dd>Tabulate Truncated Weights Over a Grid of Bounds</dd>
       </dl></div><div class="section level2">
       <h2 id="calibration-and-tilting">Calibration and tilting<a class="anchor" aria-label="anchor" href="#calibration-and-tilting"></a></h2>
 

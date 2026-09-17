@@ -12,13 +12,15 @@ model on the retained observations with
 ``` r
 ps_trim(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal", "density", "resid"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -30,17 +32,18 @@ ps_trim(
 - .propensity:
 
   A numeric vector of propensity scores in (0, 1) for binary exposures,
-  or a matrix / data frame where each column gives the propensity score
-  for one level of a categorical exposure. A data frame trimmed for a
-  binary exposure is reduced to a single column: the second column of a
-  two column data frame, which is the probability of the second level in
-  the layout model predictions come in, and the first column otherwise.
-  The column taken is announced; `options(propensity.quiet = TRUE)`
-  silences the announcement. A matrix is held to the same open interval
-  as a vector, so a score of exactly 0 or 1 in any cell is refused and a
-  separated multinomial fit cannot be repaired by trimming it: setting
-  an extreme score to missing gains nothing from a score already at an
-  endpoint.
+  a matrix / data frame where each column gives the propensity score for
+  one level of a categorical exposure, or a fitted model (see **Fitted
+  models** and **Trimming a dose model** in Details). A data frame
+  trimmed for a binary exposure is reduced to a single column: the
+  second column of a two column data frame, which is the probability of
+  the second level in the layout model predictions come in, and the
+  first column otherwise. The column taken is announced;
+  `options(propensity.quiet = TRUE)` silences the announcement. A matrix
+  is held to the same open interval as a vector, so a score of exactly 0
+  or 1 in any cell is refused and a separated multinomial fit cannot be
+  repaired by trimming it: setting an extreme score to missing gains
+  nothing from a score already at an endpoint.
   [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
   reads the closed interval for a categorical matrix and is the repair;
   see **Propensity scores at 0 and 1** in
@@ -61,7 +64,11 @@ ps_trim(
 
   - **`"adaptive"`**: Data-driven threshold that minimizes the
     asymptotic variance of the IPW estimator (Crump et al., 2009). The
-    `lower` and `upper` arguments are ignored.
+    `lower` and `upper` arguments are ignored. The threshold adapts to
+    the estimated scores, tightening under poor overlap, and the
+    estimand becomes the population it keeps.
+    `ps_trunc(method = "adaptive")` instead adapts to the sample size
+    alone and keeps every unit.
 
   - **`"pctl"`**: Quantile-based. Observations outside the
     `[lower, upper]` quantiles of the propensity score distribution are
@@ -88,6 +95,24 @@ ps_trim(
   - **`"optimal"`**: Multi-category optimal trimming (Yang et al.,
     2016). Categorical exposures only. Requires `.exposure`.
 
+  - **`"density"`**: Quantile floor on the conditional density of a
+    continuous exposure. Units whose conditional density at their
+    observed dose falls below its `lower` quantile are trimmed. Default:
+    `lower = 0.01`.
+
+  - **`"resid"`**: Bound on the absolute standardized residual of a
+    continuous exposure. Units more than `upper` spreads from their
+    predicted dose are trimmed. `upper` has no default.
+
+  `"density"` and `"resid"` need the residuals and the family of the
+  model that fit the exposure's conditional mean, so they accept only a
+  dose model (see **Trimming a dose model** in Details). They refuse a
+  vector or matrix of values, a binomial or quasibinomial `glm`, and a
+  `multinom` with an error of class `propensity_method_error`. A dose
+  model accepts only these two methods, and refuses every other one,
+  including the default `"ps"` when `method` is not supplied, with the
+  same class.
+
   For categorical exposures, only `"ps"` and `"optimal"` are supported.
 
 - lower, upper:
@@ -96,13 +121,9 @@ ps_trim(
 
   - `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
     categorical exposures, only `lower` is used, as the symmetric
-    threshold delta, and it defaults to 0.1. That default deliberately
-    differs from the 0.01 threshold
+    threshold delta, and it defaults to 0.1, the default
     [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
-    uses for categorical exposures: trimming discards the units it
-    selects, so its default follows common-support trimming practice,
-    whereas truncation keeps every unit and only pins the most extreme
-    scores back. With `k` exposure levels, a threshold of `1/k` or
+    uses as well. With `k` exposure levels, a threshold of `1/k` or
     larger cannot be met by every column of a row that sums to one, and
     is an error.
 
@@ -113,10 +134,24 @@ ps_trim(
   - `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are
     data-driven).
 
+  - `"density"`: `lower` is the quantile probability of the floor, in
+    (0, 0.5) (default 0.01). `upper` is refused with an error of class
+    `propensity_unsupported_arg_error`.
+
+  - `"resid"`: `upper` is the bound on the absolute standardized
+    residual, a single positive finite number, and is required (an error
+    of class `propensity_missing_arg_error` without it). `lower` is
+    refused with an error of class `propensity_unsupported_arg_error`.
+
+  A `"density"` `lower` or `"resid"` `upper` out of range is refused
+  with an error of class `propensity_range_error`.
+
 - .exposure:
 
   An exposure variable. Required for `"pref"`, `"cr"` (binary vector),
-  and `"optimal"` (factor or character). Not required for other methods.
+  and `"optimal"` (factor or character). For `"density"` and `"resid"`,
+  the dose is read from the model's response unless supplied here. Not
+  required for other methods.
 
 - .focal_level:
 
@@ -141,6 +176,37 @@ ps_trim(
 - ...:
 
   Additional arguments passed to methods.
+
+- .sigma:
+
+  For `"density"` and `"resid"`, a single residual spread to read the
+  conditional density at, recorded as `"supplied"`. With none supplied,
+  the spread is the one the density family estimates from the residuals,
+  as in
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md):
+  the root mean square, unless the family estimates a scale of its own.
+  A spread for each unit is refused with an error of class
+  `propensity_sigma_error`, and a spread supplied with a family that
+  estimates its own scale is refused with an error of class
+  `propensity_density_error`. The other methods refuse any `.sigma` with
+  an error of class `propensity_sigma_error`.
+
+- .density:
+
+  For `"density"` and `"resid"`, the family of the conditional density,
+  in any form
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  accepts: `"normal"` (the default), `"laplace"`, `"kernel"`, a
+  specification such as
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  or a function of the standardized residual. `"resid"` accepts only
+  [`dens_normal()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  and
+  [`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  and refuses a kernel or user-written density with an error of class
+  `propensity_density_error`. The other methods refuse any family but
+  the normal with the same class.
 
 - .treated:
 
@@ -177,6 +243,17 @@ Key fields include:
   `q_lower`/`q_upper` (pctl), `cr_lower`/`cr_upper` (cr), `delta`
   (categorical ps), or `lambda` (optimal)
 
+- `focal_inverted` (vector scores only): `TRUE` when the scores are one
+  minus the probability a fitted model reports, because the model was
+  trimmed with its first level named as focal, and `FALSE` otherwise,
+  including for every vector of scores supplied directly
+
+A trim of a dose model records `method`, `lower` (`"density"`, else
+`NULL`), `upper` (`"resid"`, else `NULL`), `threshold` (the realized
+floor on the conditional density), `sigma` (the spread it was read at),
+`sigma_kind` (`"pooled"`, `"mle"`, or `"supplied"`), `density` (the
+density specification), `keep_idx`, `trimmed_idx`, and `n_obs`.
+
 ## Details
 
 ### How trimming works
@@ -206,6 +283,17 @@ would otherwise receive extreme weights and destabilize estimates.
 
 - Use `"optimal"` for multi-category (3+) exposures; this is the only
   data-driven method available for categorical treatments.
+
+- Use `"density"` or `"resid"` for a continuous exposure, on its dose
+  model.
+
+For a binary or categorical exposure, trimming and refitting is the
+first recourse when the analysis can accept a change of estimand. When
+every unit must be kept, bound the scores with
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+instead, for a binary exposure with `method = "adaptive"`, or bound the
+weights with
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md).
 
 ### Typical workflow
 
@@ -240,6 +328,95 @@ supplied, announcing the variable they read;
 `.exposure` you supply is used instead, and a categorical model's
 columns are matched to its levels by name, so an exposure whose levels
 are ordered differently is still trimmed against the right column.
+
+### Trimming a dose model
+
+For a continuous exposure, `.propensity` can be the model of the
+exposure's conditional mean: a
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html), a `glm` of the
+[`gaussian()`](https://rdrr.io/r/stats/family.html) family (or another
+family whose variance is constant), a
+[`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html), or an
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html), the models
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+reads a dose from. A `glm` whose spread changes with its mean, such as
+[`poisson()`](https://rdrr.io/r/stats/family.html), is refused with an
+error of class `propensity_model_family_error`. Only `"density"` and
+`"resid"` apply.
+
+For a dose, the generalized propensity score is the conditional density
+\\f(a \mid x)\\ (Hirano and Imbens, 2004), and a unit whose observed
+dose has a small conditional density gets a large weight, as a unit with
+a propensity score near 0 does for a binary exposure. Both methods read
+the fitted conditional mean `mu`, the spread `sigma` of the residuals
+under the family in `.density`, the standardized residual
+`z = (a - mu) / sigma`, and the conditional density `f = g(z) / sigma`,
+where `g` is the family's standardized density. `"density"` keeps the
+units whose `f` is at least its `lower` quantile. `"resid"` keeps those
+whose `|z|` is at most `upper`; for the symmetric unimodal families it
+accepts, that is the floor `g(upper) / sigma` on `f`, which is the
+threshold it records. The trim is one-sided, at the low end of the
+density, since only a small density makes a large weight (Branson et
+al., 2024).
+
+The retained values are the conditional means, and the trimmed ones are
+`NA`. A unit with a missing mean or dose takes no part in the trim.
+`.focal_level`, `.reference_level`, and their deprecated forms are
+refused with an error of class `propensity_focal_level_error`, since a
+dose has no levels.
+
+A trim changes the estimand. The analysis describes the units whose
+observed dose was plausible under the model, not the full sample, and
+which units those are depends on the threshold. Branson et al. (2024)
+define the trimmed dose response at each dose among the units whose
+conditional density at that dose exceeds the threshold, a population
+that changes with the dose; this trim is its sample analogue at each
+unit's own observed dose rather than the same population. A
+dose-response curve fit to the trimmed sample is a curve for the units
+it keeps.
+
+After trimming,
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+refits the conditional mean on the retained rows and re-estimates the
+spread there under the recorded family, and
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+builds the weights from the refit under the family and spread the record
+holds.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+refuses those weights, as it refuses every weight built from a trimmed
+score.
+
+The other way to hold down extreme weights for a dose is
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md),
+which bounds the weights and keeps every unit; see **Truncating weights
+or trimming the density** there for the simulation results behind this
+summary. With a density family that fits the residuals, a density trim
+at `lower = 0.01` did not help: at an effective sample size of 64% of
+the sample, its interval covered 0.843, against 0.933 for the untrimmed
+weights under the same fixed-weight interval. A loose bound on the
+weights left that coverage where it was and lowered the root mean
+squared error. With heavy-tailed residuals read through a normal
+density, or a residual spread the model left out, the trim covered 0.979
+to 0.989, against 0.618 to 0.881 for the untrimmed weights and 0.644 to
+0.906 for the bound, because it removed the units the misspecified
+density fit worst. Two cautions go with those numbers. The trim's
+intervals were computed on the trimmed sample, held the weights fixed,
+and were conservative, and its bias was measured against the effect in
+the full population, so part of that bias is the change of estimand.
+`"resid"` was not simulated; the results carry over to it only because a
+bound on the standardized residual is a floor on the conditional
+density.
+
+A family that fits the residuals is the better repair where it applies.
+Under heavy tails,
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+with 4 degrees of freedom at its default scale had about a third of the
+root mean squared error of the bounded normal weights and an
+M-estimation interval that covered 0.926 to 0.939 with standard errors
+close to right, and it kept every unit. The trim's coverage was higher,
+but its interval was conservative. Check the family first; trim when the
+units at the low-density end are ones the analysis should not describe,
+and say so when reporting the estimand.
 
 ### Object behavior
 
@@ -294,11 +471,12 @@ observations it was written for, along with how many observations that
 was. Operations that hand this package the subscript re-index those
 positions onto the result: subsetting with `[`,
 [`sort()`](https://rdrr.io/r/base/sort.html),
-[`unique()`](https://rdrr.io/r/base/unique.html),
 [`rep()`](https://rdrr.io/r/base/rep.html), and
 [`na.omit()`](https://rdrr.io/r/stats/na.fail.html) all return a record
 written for what they return, and a subscript naming a position more
 than once reports that unit at every place it now holds.
+[`unique()`](https://rdrr.io/r/base/unique.html) does the same when it
+can, as described below.
 
 Operations that change how many observations there are without supplying
 a subscript cannot re-index the record, and it is dropped rather than
@@ -306,22 +484,48 @@ worked out from the values, since reading membership back from the `NA`
 pattern would report a propensity score that arrived missing as one this
 package removed.
 [`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
-which is how filtering, joining, and grouped summaries in dplyr reach a
-column, is the usual route, and dropping the record there raises a
-warning of class `propensity_trim_record_warning`. Combining with
-[`c()`](https://rdrr.io/r/base/c.html) drops it without comment, because
-concatenation appends one set of observations to another and the
-prototype it builds the result from holds no positions to lose. The
-values, the class, and the method and its cutoffs are untouched either
-way.
+which is how filtering, joining, and grouped verbs in dplyr reach a
+column, is the usual route, and combining two or more vectors with
+[`c()`](https://rdrr.io/r/base/c.html) is another, because concatenation
+appends one set of observations to another. The record is dropped
+without comment on every route: most of these length changes build
+vectors the caller never holds, such as the pieces a grouped verb slices
+a column into or the rows a tibble slices off to print, so a warning
+would mostly describe something that is not the result. The values, the
+class, and the method and its cutoffs are untouched.
 
-Printing a `ps_trim` column inside a tibble takes the same route: a
-tibble prints the first few rows and slices the column to get them, so a
-column longer than what is shown raises the record-drop warning as it is
-printed. The warning is truthful, and it describes the vector built for
-the display rather than the column, which is unchanged. Print
-[`as.numeric()`](https://rdrr.io/r/base/numeric.html) of the column, or
-widen the print with `options(pillar.print_max)`, to avoid it.
+A combine drops the positions even when it is handed a single vector.
+[`c()`](https://rdrr.io/r/base/c.html) of one `ps_trim` returns it
+unchanged, record included, but `vctrs::vec_c(x)`,
+`dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`, and an ungrouped
+[`dplyr::reframe()`](https://dplyr.tidyverse.org/reference/reframe.html)
+rebuild the column, so a later
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+or
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+on the result refuses it.
+
+[`unique()`](https://rdrr.io/r/base/unique.html) keeps one element for
+each distinct value, or one row for each distinct row of a matrix of
+scores, and that element or row stands for every unit holding the same
+scores. A matrix comes back as a matrix of the same class with its
+column names. The record is re-indexed onto the result when all of the
+merged units share one status, and dropped otherwise: a trimmed score
+and one that arrived missing are both `NA`, and a trimmed row is `NA`
+throughout, so a vector or matrix holding both returns a single `NA`
+element or row that neither status describes.
+
+[`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) and
+[`tibble::as_tibble()`](https://tibble.tidyverse.org/reference/as_tibble.html)
+turn a matrix of scores into a data frame whose columns are `ps_trim`
+vectors carrying the matrix's record, one row per unit, so the weight
+functions read the data frame as they read the matrix and a subset of
+its rows re-indexes the record. A data frame whose columns are not all
+trimmed with the same record is refused by the weight functions with an
+error of class `propensity_matrix_type_error`. A matrix without column
+names gives columns named `V1`, `V2`, and so on, which the weight
+functions then refuse because they name no exposure level, so name the
+columns after the exposure levels before converting.
 
 A record can also outlive the observations it describes, because it
 travels by routes vctrs does not see: growing a `ps_trim` by
@@ -334,19 +538,26 @@ raise an error of class `propensity_missing_meta_error` when it does
 not, rather than name trimmed units at stale positions.
 
 That check compares how many observations the record was written for
-against how many the object holds, which a reordering does not change.
-An operation that reorders the observations through vctrs, rather than
-through `[`, therefore keeps a record written for the order they used to
-be in: `vctrs::vec_slice(x, 5:1)` and
-[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
-both return the values in a new order under positions still naming the
-old one.
+against how many the object holds, which a reordering does not change,
+so a route that could reorder the observations without saying how drops
+the positions instead, at any length:
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+[`dplyr::filter()`](https://dplyr.tidyverse.org/reference/filter.html),
+and
+[`vctrs::vec_assign()`](https://vctrs.r-lib.org/reference/vec_slice.html)
+and the helpers built on it return a `ps_trim` whose record keeps its
+method and cutoffs and names no units, and
 [`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
-answers from those positions and names the wrong units, and
+and
 [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
-refits on the wrong rows. Subsetting with `[` is handed the subscript
-and re-indexes, so reorder with `[`, or put the propensity scores in the
-order you want before trimming them.
+refuse it. Subsetting with `[`,
+[`sort()`](https://rdrr.io/r/base/sort.html),
+[`unique()`](https://rdrr.io/r/base/unique.html), and
+[`rep()`](https://rdrr.io/r/base/rep.html) know where the units went and
+re-index the record, and `[<-` and `is.na<-` move no unit and keep it,
+so reorder with `[`, or put the propensity scores in the order you want
+before trimming them.
 
 Casting a numeric vector into a `ps_trim` with
 [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
@@ -357,9 +568,17 @@ including 0 and 1. Call `ps_trim()` on the scores to trim them.
 
 ## References
 
+Branson, Z., Kennedy, E. H., Balakrishnan, S., & Wasserman, L. (2024).
+Causal effect estimation after propensity score trimming with continuous
+treatments. *arXiv preprint* arXiv:2309.00706.
+
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009).
 Dealing with limited overlap in estimation of average treatment effects.
 *Biometrika*, 96(1), 187–199.
+
+Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
+treatments. In *Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives* (pp. 73–84).
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.
@@ -785,6 +1004,116 @@ ps_trim(fit, method = "cr")
 #>        295        296        297        298        299        300 
 #> 0.85629892 0.31532329 0.57414353         NA 0.10082012 0.22538288 
 
+# Trim a dose model on the scale of its conditional density
+dose <- 1 + 0.5 * x + rt(n, df = 3)
+dose_fit <- lm(dose ~ x)
+ps_trim(dose_fit, method = "density", lower = 0.05)
+#> ℹ Using exposure variable "dose" from the propensity score model
+#> <ps_trim; trimmed 15 of 300[300]>
+#>   [1]  0.42939235  1.09006968  1.94693677  0.28680810  0.92816170  1.05804921
+#>   [7]  1.40955162  0.83078134  2.18917407  0.89241182  1.23225111  1.57677128
+#>  [13]  0.73733962  0.34220638  2.06565480 -0.43428963  1.51377446  0.99904335
+#>  [19]  1.59575061  1.24117672  2.25412348  0.24433098  1.94803175  2.17096038
+#>  [25]  0.98019043 -0.52018258  1.26864305  0.61283227  1.46100564          NA
+#>  [31]  1.42847473  1.17197688  1.63443228  0.80362799  0.50282739  0.61338051
+#>  [37] -0.07695168  0.42592949  0.63573276  0.82661942  0.74290294 -0.21932966
+#>  [43]  0.46311104  2.13974897  1.35735721  2.19311121  0.79060333  0.92169244
+#>  [49]  0.86469980  0.24503825  0.46519850  2.23914942  0.63378747  1.75630633
+#>  [55]          NA -0.22346747  0.77992308  1.54874422  1.67294893  1.99810063
+#>  [61] -0.11497789  2.21773756  0.54773574  1.07377241  1.28635301  0.47637020
+#>  [67] -0.24360284  0.68445115  1.02858683  0.43026445  0.41451402  1.17899374
+#>  [73]  0.89065668  1.24275403  0.94436412  0.42316534  1.77328293  1.44853829
+#>  [79]          NA  0.11600668  1.58546323 -0.05849822  0.65142256  0.13907368
+#>  [85] -0.37129213  2.09001943  0.57812066  0.80330827  0.74084879  1.21334515
+#>  [91]  1.95459883  2.00392477  0.25429792  0.14750935  0.05332484  0.21185234
+#>  [97]  2.17383418  0.98184437  0.46255518  0.61002168  1.63339100  1.13633248
+#> [103]  0.78523598  0.51934498  0.45059496  2.22799665          NA  2.20396205
+#> [109]  0.71982466  0.76290580          NA  0.82417245  1.26535859  1.80713482
+#> [115]  1.32173555  1.25566040  1.72896844  1.67777809  1.04227851  0.49877122
+#> [121]  1.73522619  1.06198124  2.02192736  0.71416468  0.33942104  1.30549651
+#> [127]  0.56823119  1.36731942 -0.07573634 -0.08699855  1.39846633  1.17930747
+#> [133]  1.50917138 -0.25422887  1.71774635          NA  1.60750104  1.45746761
+#> [139]  2.26588287  0.08927363  0.62104937  1.22740991          NA  1.02942388
+#> [145]          NA  0.57794987  1.37849621  1.31302677  0.48447213  0.36803416
+#> [151]  1.57319103  0.87370106  1.41824676  0.46145377  1.75727019  0.15688221
+#> [157]  1.44459956  1.26068221  1.14084917  1.38485812  1.22053498  0.58747867
+#> [163]  0.81367151  1.19696789  0.17535374  0.43729835  2.24574142 -0.30490817
+#> [169]  0.22076851  1.58207270  1.64206502  1.49010683  1.01190062  1.17498029
+#> [175]  0.42465659  0.57885939  0.81688295  0.40633792  1.47869144 -0.01482674
+#> [181]  0.34786509  0.20646291  1.21669791  0.28615913  1.30950600  1.69577790
+#> [187]  0.99258284  1.29178761  0.57768316  1.28476948          NA  0.93028744
+#> [193]  0.15553319  0.81452371          NA  1.40504011  0.70676339  0.49559335
+#> [199]  0.45390678  0.52130612  1.15916550  0.35449252  2.73054913  1.11074987
+#> [205]  0.38686049  1.21160039  0.90272781  0.76308099  1.34329166  1.11842326
+#> [211]  1.60394523  0.65687238  2.07419130  0.10125236  1.06187604  1.25290208
+#> [217]  1.71908694  0.16825996  0.28115746  2.00056180  1.22033889  1.41417151
+#> [223]  0.49273803  2.15214956  1.02019530  1.26378323  0.92229838  1.52326968
+#> [229]  0.74893483  2.35638147  1.93793228 -0.21640944  0.59892920  0.95888442
+#> [235]          NA          NA  0.62864782  1.27198814  1.03575937  0.61815694
+#> [241]  0.92722831  2.74124982  1.69346711  1.31286431  1.45300570  0.63202597
+#> [247]  1.04005312  1.14911142  0.68742022  0.69745284  1.28348764  0.72974566
+#> [253]  0.86883809  0.78201580  1.49230436  1.27256361  0.79171095  0.80305489
+#> [259]  1.57596748  0.87254292  1.79740775  0.91710321          NA -0.19223190
+#> [265]  0.58200010  0.12248144  2.15662179  1.25907579  1.29930313  0.95476587
+#> [271] -0.68414308  0.94839325  0.98006748  0.22883164  1.13042501  1.95753594
+#> [277]  0.95548128  1.60588243  0.73285216  1.01824291  2.22052580  1.37386241
+#> [283]  1.75852700  0.59350771  1.80187769  1.99869379  1.69340860  0.98094845
+#> [289]          NA  0.92038387  0.28780107          NA  1.03163075  0.83489383
+#> [295]  1.88582027  0.76091550  1.23286043 -0.30381489  0.14016646  0.55914528
+ps_trim(dose_fit, method = "resid", upper = 3, .density = dens_t(4))
+#> ℹ Using exposure variable "dose" from the propensity score model
+#> <ps_trim; trimmed 14 of 300[300]>
+#>   [1]  0.42939235  1.09006968  1.94693677  0.28680810  0.92816170  1.05804921
+#>   [7]  1.40955162  0.83078134  2.18917407  0.89241182  1.23225111  1.57677128
+#>  [13]  0.73733962  0.34220638  2.06565480 -0.43428963  1.51377446  0.99904335
+#>  [19]  1.59575061  1.24117672  2.25412348  0.24433098  1.94803175  2.17096038
+#>  [25]  0.98019043 -0.52018258  1.26864305  0.61283227  1.46100564          NA
+#>  [31]  1.42847473  1.17197688  1.63443228  0.80362799  0.50282739  0.61338051
+#>  [37] -0.07695168  0.42592949  0.63573276  0.82661942  0.74290294 -0.21932966
+#>  [43]  0.46311104  2.13974897  1.35735721  2.19311121  0.79060333  0.92169244
+#>  [49]  0.86469980  0.24503825  0.46519850  2.23914942  0.63378747  1.75630633
+#>  [55]          NA -0.22346747  0.77992308  1.54874422  1.67294893  1.99810063
+#>  [61] -0.11497789  2.21773756  0.54773574  1.07377241  1.28635301  0.47637020
+#>  [67] -0.24360284  0.68445115  1.02858683  0.43026445  0.41451402  1.17899374
+#>  [73]  0.89065668  1.24275403  0.94436412  0.42316534  1.77328293  1.44853829
+#>  [79]          NA  0.11600668  1.58546323 -0.05849822  0.65142256  0.13907368
+#>  [85] -0.37129213  2.09001943  0.57812066  0.80330827  0.74084879  1.21334515
+#>  [91]  1.95459883  2.00392477  0.25429792  0.14750935  0.05332484  0.21185234
+#>  [97]  2.17383418  0.98184437  0.46255518  0.61002168  1.63339100  1.13633248
+#> [103]  0.78523598  0.51934498  0.45059496  2.22799665          NA  2.20396205
+#> [109]  0.71982466  0.76290580          NA  0.82417245  1.26535859  1.80713482
+#> [115]  1.32173555  1.25566040  1.72896844  1.67777809  1.04227851  0.49877122
+#> [121]  1.73522619  1.06198124  2.02192736  0.71416468  0.33942104  1.30549651
+#> [127]  0.56823119  1.36731942 -0.07573634 -0.08699855  1.39846633  1.17930747
+#> [133]  1.50917138 -0.25422887  1.71774635          NA  1.60750104  1.45746761
+#> [139]  2.26588287  0.08927363  0.62104937  1.22740991          NA  1.02942388
+#> [145]          NA  0.57794987  1.37849621  1.31302677  0.48447213  0.36803416
+#> [151]  1.57319103  0.87370106  1.41824676  0.46145377  1.75727019  0.15688221
+#> [157]  1.44459956  1.26068221  1.14084917  1.38485812  1.22053498  0.58747867
+#> [163]  0.81367151  1.19696789  0.17535374  0.43729835  2.24574142 -0.30490817
+#> [169]  0.22076851  1.58207270  1.64206502  1.49010683  1.01190062  1.17498029
+#> [175]  0.42465659  0.57885939  0.81688295  0.40633792  1.47869144 -0.01482674
+#> [181]  0.34786509  0.20646291  1.21669791  0.28615913  1.30950600  1.69577790
+#> [187]  0.99258284  1.29178761  0.57768316  1.28476948          NA  0.93028744
+#> [193]  0.15553319  0.81452371          NA  1.40504011  0.70676339  0.49559335
+#> [199]  0.45390678  0.52130612  1.15916550  0.35449252  2.73054913  1.11074987
+#> [205]  0.38686049  1.21160039  0.90272781  0.76308099  1.34329166  1.11842326
+#> [211]  1.60394523  0.65687238  2.07419130  0.10125236  1.06187604  1.25290208
+#> [217]  1.71908694  0.16825996  0.28115746  2.00056180  1.22033889  1.41417151
+#> [223]  0.49273803  2.15214956  1.02019530  1.26378323  0.92229838  1.52326968
+#> [229]  0.74893483  2.35638147  1.93793228 -0.21640944  0.59892920  0.95888442
+#> [235] -0.07431245          NA  0.62864782  1.27198814  1.03575937  0.61815694
+#> [241]  0.92722831  2.74124982  1.69346711  1.31286431  1.45300570  0.63202597
+#> [247]  1.04005312  1.14911142  0.68742022  0.69745284  1.28348764  0.72974566
+#> [253]  0.86883809  0.78201580  1.49230436  1.27256361  0.79171095  0.80305489
+#> [259]  1.57596748  0.87254292  1.79740775  0.91710321          NA -0.19223190
+#> [265]  0.58200010  0.12248144  2.15662179  1.25907579  1.29930313  0.95476587
+#> [271] -0.68414308  0.94839325  0.98006748  0.22883164  1.13042501  1.95753594
+#> [277]  0.95548128  1.60588243  0.73285216  1.01824291  2.22052580  1.37386241
+#> [283]  1.75852700  0.59350771  1.80187769  1.99869379  1.69340860  0.98094845
+#> [289]          NA  0.92038387  0.28780107          NA  1.03163075  0.83489383
+#> [295]  1.88582027  0.76091550  1.23286043 -0.30381489  0.14016646  0.55914528
+
 if (rlang::is_installed("nnet")) {
   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
   multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
@@ -793,15 +1122,15 @@ if (rlang::is_installed("nnet")) {
 #> ℹ Using exposure variable "trt" from the propensity score model
 #> <ps_trim_matrix[300 x 3]; trimmed 0 of 300; method=optimal>
 #>            a         b         c
-#> 1  0.3419308 0.2889253 0.3691439
-#> 2  0.3627668 0.2982545 0.3389787
-#> 3  0.3893586 0.3089523 0.3016890
-#> 4  0.3374106 0.2867949 0.3757945
-#> 5  0.3576814 0.2960527 0.3462659
-#> 6  0.3617623 0.2978235 0.3404142
-#> 7  0.3727507 0.3024332 0.3248162
-#> 8  0.3546154 0.2947017 0.3506829
-#> 9  0.3967551 0.3116776 0.2915673
-#> 10 0.3565564 0.2955590 0.3478846
+#> 1  0.2833559 0.3409328 0.3757113
+#> 2  0.2986578 0.3516829 0.3496593
+#> 3  0.3183352 0.3645221 0.3171427
+#> 4  0.2800465 0.3385216 0.3814319
+#> 5  0.2949150 0.3491145 0.3559705
+#> 6  0.2979181 0.3511784 0.3509035
+#> 7  0.3060233 0.3566205 0.3373562
+#> 8  0.2926613 0.3475487 0.3597900
+#> 9  0.3238455 0.3679135 0.3082410
+#> 10 0.2940878 0.3485415 0.3573707
 #> # ... with 290 more rows
 ```

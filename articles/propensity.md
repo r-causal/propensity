@@ -249,6 +249,9 @@ ps_trim_meta(ps_trimmed)
 #> $upper
 #> [1] 0.9
 #> 
+#> $focal_inverted
+#> [1] FALSE
+#> 
 #> $keep_idx
 #>   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 
 #>   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 
@@ -260,7 +263,8 @@ ps_trim_meta(ps_trimmed)
 #>  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 
 #> 
 #> $trimmed_idx
-#> [1] 19 59
+#> 19 59 
+#> 19 59 
 #> 
 #> $n_obs
 #> [1] 100
@@ -346,6 +350,18 @@ summary(wts_truncated)
 #>   1.092   1.440   1.780   2.028   2.111  12.583
 ```
 
+`method = "adaptive"` chooses the bounds from the sample size alone: it
+bounds the scores at `[1/c, 1 - 1/c]` with `c = sqrt(n) * log(n) / 5`
+(Gruber et al., 2022), which caps unstabilized ATE weights at `c`.
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+places that bound on the weights themselves:
+
+``` r
+
+ps_trunc_adapt <- ps_trunc(ps, method = "adaptive")
+wts_bounded_ate <- wt_trunc(wts_ate)
+```
+
 ### Which approach?
 
 These aren’t mutually exclusive. In general: overlap estimands like
@@ -353,9 +369,15 @@ These aren’t mutually exclusive. In general: overlap estimands like
 are the easiest path if your research question allows it. Trimming
 (followed by
 [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md))
-is the standard choice when you need ATE but have near-violations of
-positivity. Truncation is a lighter touch when you want to keep the full
-sample.
+is the standard choice for near-violations of positivity, but it changes
+the target population: the estimate describes the units the trim keeps,
+not the whole sample, so report it as such. Truncation, with
+`ps_trunc(method = "adaptive")` on the scores or
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+on the weights, is the choice when you must keep the full sample.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+accepts neither trimmed nor truncated weights, so an analysis that uses
+them needs its interval computed another way.
 
 ## Interpreting results
 
@@ -552,6 +574,62 @@ the rows, refit the dose model, rebuild the weights with
 and refit the marginal structural model on each resample, then read the
 spread of the slope across the resamples.
 
+A dose has no propensity score in (0, 1), so
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+has nothing to bound. Extreme dose weights have two remedies instead.
+[`wt_trunc()`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+bounds the weights once they are built and keeps every unit; its default
+bound, `sqrt(n) * log(n) / 5` (Gruber et al., 2022), loosens as the
+sample grows.
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+with `method = "density"` works on the dose model itself: it sets aside
+the units whose observed dose has the lowest conditional density, here
+the lowest 1%, and
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+refits the model on the rest:
+
+``` r
+
+# Keep every unit and bound the weights. With 100 units the bound is 9.2,
+# above every weight here, so no weight moves.
+wts_bounded <- wt_trunc(wts_dose)
+sum(is_unit_wt_truncated(wts_bounded))
+#> [1] 0
+
+# Set aside the units whose dose the model finds least plausible
+dose_trimmed <- ps_trim(ps_dose, method = "density", lower = 0.01)
+#> ℹ Using exposure variable "a" from the propensity score model
+dose_refit <- ps_refit(dose_trimmed, ps_dose)
+wts_dose_trimmed <- wt_ate(dose_refit, dat$a)
+#> ℹ Treating `.exposure` as continuous
+summary(wts_dose_trimmed)
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs 
+#>  0.1043  0.5671  0.7260  0.9035  0.9069  5.9154       1
+```
+
+Both change the estimand. The bound adds a bias that shrinks only as it
+loosens, and the trim describes only the units it keeps.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+refuses the weights from either, so report an interval computed another
+way, such as a sandwich that holds the weights fixed. A heavy weight can
+also mean the density family is wrong, and then a family that fits the
+residuals, such as
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+above, is the better remedy. See
+[`?wt_trunc`](https://r-causal.github.io/propensity/reference/wt_trunc.md)
+for when to reach for which.
+
+To see what either remedy recovered, compare effective sample sizes with
+`halfmoon::check_ess()`. It reads weights as columns of a data frame, so
+add the weights before and after as separate columns:
+
+``` r
+
+dat$w_dose <- wts_dose
+dat$w_bounded <- wts_bounded
+halfmoon::check_ess(dat, .weights = c(w_dose, w_bounded), .exposure = a)
+```
+
 ### Categorical exposures
 
 For multi-level treatments, pass a matrix or data frame of predicted
@@ -611,11 +689,13 @@ estimand(wts_cens) # "uncensored"
 
 See the function reference for details:
 
-- [`?wt_ate`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  – Weight calculation for all estimands
+- [`?wt_ate`](https://r-causal.github.io/propensity/reference/wt_ate.md):
+  Weight calculation for all estimands
 - [`?ps_trim`](https://r-causal.github.io/propensity/reference/ps_trim.md),
   [`?ps_trunc`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
-  [`?ps_calibrate`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
-  – Handling extreme propensity scores
-- [`?ipw`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-  – Inverse probability weighted estimation
+  [`?ps_calibrate`](https://r-causal.github.io/propensity/reference/ps_calibrate.md):
+  Handling extreme propensity scores
+- [`?wt_trunc`](https://r-causal.github.io/propensity/reference/wt_trunc.md):
+  Bounding extreme weights, including those of a continuous exposure
+- [`?ipw`](https://r-causal.github.io/causalgenerics/reference/ipw.html):
+  Inverse probability weighted estimation
