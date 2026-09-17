@@ -15,6 +15,12 @@
   which describe a truncated propensity score. Weights truncated at different
   bounds do not combine.
 
+* `ipw()` refuses weights bounded with `wt_trunc()` on every exposure route,
+  with the dedicated error class `propensity_ipw_wt_truncated_error`. The
+  message names the two supported alternatives: rebuild the weights without
+  the truncation and report the M-estimation interval, or report a
+  fixed-weight sandwich that conditions on the bound.
+
 * `ps_trim()` now trims a model of a continuous exposure on the scale of its
   conditional density. A `lm`, a `glm` whose variance is constant, a
   `MASS::rlm()`, or an `mgcv::gam()` of the dose can be trimmed with

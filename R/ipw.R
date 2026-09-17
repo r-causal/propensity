@@ -1309,11 +1309,30 @@
 #' the propensity score model on every evaluation, so a weight that is no longer
 #' a deterministic function of that model breaks the sandwich variance. Supplying
 #' weights built from a modified score errors on either standard error method;
-#' refit the weights from the unmodified propensity score model. An outcome model
-#' fit without weights also errors on either method. The outcome model must not
-#' carry an offset term on either method, since neither the stacked outcome score
-#' nor the linearization influence functions thread an offset; supplying one
-#' errors.
+#' refit the weights from the unmodified propensity score model.
+#' Density-trimmed weights for a continuous exposure (`ps_trim()` with
+#' `method = "density"` or `method = "resid"`) carry the trim record and are
+#' refused as trimmed weights.
+#'
+#' Weights bounded with [wt_trunc()] are refused as well, with their own error,
+#' for a different reason. A bound on the weights is not a smooth function of the
+#' propensity score model's parameters, so the stacked sandwich would report an
+#' interval for the truncated estimand without saying so. The four methods also
+#' differ in kind. A fixed bound (`"wt"`, or `"adaptive"`, which depends only on
+#' the sample size) is known before the weights are seen, while a percentile
+#' bound (`"pctl"`, or `"count"`, which bounds at an observed weight) is estimated
+#' from the weights it modifies and would need an estimating equation of its own.
+#' Only the fixed case is a candidate for support, and relaxing the refusal for
+#' it first requires a simulation that measures the coverage of the M-estimation
+#' interval with the bound inside the stack. Until then, rebuild the weights
+#' without [wt_trunc()] and report the M-estimation interval, or fit the outcome
+#' model with the truncated weights and report a fixed-weight sandwich, stating
+#' that it conditions on the bound.
+#'
+#' An outcome model fit without weights also errors on either method. The
+#' outcome model must not carry an offset term on either method, since neither
+#' the stacked outcome score nor the linearization influence functions thread an
+#' offset; supplying one errors.
 #'
 #' For a binary or categorical exposure, the outcome model formula must contain
 #' the exposure. The counterfactual designs are built by setting the exposure to
@@ -1415,10 +1434,11 @@
 #' repairs such a matrix, its categorical matrix method reading the closed
 #' interval so that a cell at an endpoint is bounded rather than refused, while
 #' [ps_trim()] holds the open interval as the weight functions do. Weights built
-#' from a truncated score are their own refusal here, since [ipw()] cannot yet
-#' account for a modified propensity score, so a separated fit is repaired for
-#' the weight functions rather than for this one. See **Propensity scores at 0
-#' and 1** in [wt_ate()] for the remedy.
+#' from a trimmed or truncated score are their own refusal here, as are weights
+#' bounded with [wt_trunc()], since [ipw()] cannot yet account for a modified
+#' propensity score or a truncated weight, so a separated fit is repaired for the
+#' weight functions rather than for this one. See **Propensity scores at 0 and
+#' 1** in [wt_ate()] for the remedy.
 #'
 #' The propensity score model must also be fit without case weights, since the
 #' stacked propensity score equations are unweighted and a weighted fit would not
@@ -2299,9 +2319,9 @@ ipw_model_prior_weights <- function(fit) {
 
 # Guard the weights that fit the outcome model. ipw() cannot yet account for
 # propensity scores that were trimmed, truncated, or calibrated before
-# weighting, so detect them here and direct the user to refit from the
-# unmodified model. An outcome model fit without weights cannot yield an IPW
-# estimate at all.
+# weighting, or for weights truncated with wt_trunc(), so detect them here and
+# tell the user which weights to rebuild or which variance to report instead.
+# An outcome model fit without weights cannot yield an IPW estimate at all.
 check_ipw_weights <- function(wts, call = rlang::caller_env()) {
   if (is.null(wts)) {
     abort(
@@ -2351,6 +2371,29 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
         support for modified weights is planned."
       ),
       error_class = "propensity_ipw_calibrated_error",
+      call = call
+    )
+  }
+
+  # A bound on the weights is not a smooth function of the propensity score
+  # model's parameters, and a percentile bound is itself estimated from the
+  # weights it modifies, so no stacked sandwich accounts for either.
+  if (is_wt_truncated(wts)) {
+    abort(
+      c(
+        "{.arg outcome_mod} was fit with weights truncated on the weight \\
+        scale with {.fun wt_trunc}.",
+        x = "{.fun ipw} cannot yet account for truncated propensity score \\
+        weights: a hard \\
+        bound is not a smooth function of the propensity score model's \\
+        parameters, so the stacked sandwich would report an interval for the \\
+        truncated estimand without saying so.",
+        i = "Rebuild the weights without {.fun wt_trunc} and report the \\
+        M-estimation interval, or fit {.arg outcome_mod} with the truncated \\
+        weights and report the fixed-weight sandwich yourself, stating that it \\
+        conditions on the bound."
+      ),
+      error_class = "propensity_ipw_wt_truncated_error",
       call = call
     )
   }

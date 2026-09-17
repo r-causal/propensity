@@ -19,11 +19,15 @@ wt_trunc_ipw_binary_data <- function(seed = 2024, n = 400) {
   data.frame(x1, x2, z, y)
 }
 
-wt_trunc_ipw_continuous_data <- function(seed = 2024, n = 400) {
+wt_trunc_ipw_continuous_data <- function(
+  seed = 2024,
+  n = 400,
+  x1_effect = 0.8
+) {
   withr::local_seed(seed)
   x1 <- rnorm(n)
   x2 <- rbinom(n, 1, 0.5)
-  A <- 0.5 + 0.8 * x1 - 0.4 * x2 + rnorm(n)
+  A <- 0.5 + x1_effect * x1 - 0.4 * x2 + rnorm(n)
   yc <- 1 + 0.6 * A + 0.5 * x1 - 0.3 * x2 + rnorm(n)
   data.frame(x1, x2, A, yc)
 }
@@ -104,9 +108,13 @@ wt_trunc_ipw_binary <- function(modify = c("none", "trim", "trunc", "calib")) {
   )
 }
 
-wt_trunc_ipw_continuous <- function(stabilize = TRUE) {
+wt_trunc_ipw_continuous <- function(
+  stabilize = TRUE,
+  method = "count",
+  x1_effect = 0.8
+) {
   withr::local_options(propensity.quiet = TRUE)
-  dat <- wt_trunc_ipw_continuous_data()
+  dat <- wt_trunc_ipw_continuous_data(x1_effect = x1_effect)
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   base <- wt_ate(
     as.double(fitted(ps_mod)),
@@ -114,7 +122,11 @@ wt_trunc_ipw_continuous <- function(stabilize = TRUE) {
     exposure_type = "continuous",
     stabilize = stabilize
   )
-  wts <- wt_trunc(base, method = "count", upper = 5)
+  wts <- if (method == "adaptive") {
+    wt_trunc(base, method = "adaptive")
+  } else {
+    wt_trunc(base, method = method, upper = 5)
+  }
 
   list(
     dat = dat,
@@ -167,6 +179,32 @@ wt_trunc_ipw_joint <- function() {
   )
 }
 
+# The declared joint route: the crossing of two binary treatments as one
+# factor, weighted through one multinomial propensity score model.
+wt_trunc_ipw_joint_exposure <- function() {
+  withr::local_options(propensity.quiet = TRUE)
+  dat <- wt_trunc_ipw_joint_data()
+  dat$joint <- causalgenerics::joint_exposure(a = dat$a, e = dat$e)
+  ps_mod <- nnet::multinom(
+    joint ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- ps_mod$lev
+  base <- wt_ate(ps, dat$joint, exposure_type = "categorical")
+  wts <- wt_trunc(base, method = "count", upper = 5)
+
+  list(
+    dat = dat,
+    ps_mod = ps_mod,
+    wts = wts,
+    outcome_mod = wt_trunc_ipw_outcome(y ~ joint + x1, dat, wts)
+  )
+}
+
 # ---- the fixtures bound weights as the tests assume --------------------------
 
 test_that("every fixture carries weights that wt_trunc() moved", {
@@ -174,8 +212,13 @@ test_that("every fixture carries weights that wt_trunc() moved", {
     binary = wt_trunc_ipw_binary(),
     continuous_stabilized = wt_trunc_ipw_continuous(stabilize = TRUE),
     continuous_unstabilized = wt_trunc_ipw_continuous(stabilize = FALSE),
+    continuous_adaptive = wt_trunc_ipw_continuous(
+      stabilize = FALSE,
+      method = "adaptive"
+    ),
     categorical = wt_trunc_ipw_categorical(),
-    joint = wt_trunc_ipw_joint()
+    joint = wt_trunc_ipw_joint(),
+    joint_exposure = wt_trunc_ipw_joint_exposure()
   )
 
   for (fx in fixtures) {
@@ -190,7 +233,7 @@ test_that("every fixture carries weights that wt_trunc() moved", {
 
 # ---- one refusal on every route ---------------------------------------------
 
-test_that("ipw() refuses weight-truncated binary weights on both SE paths", {
+test_that("ipw() refuses weight-truncated binary weights on every SE path", {
   fx <- wt_trunc_ipw_binary()
 
   expect_error(
@@ -203,6 +246,15 @@ test_that("ipw() refuses weight-truncated binary weights on both SE paths", {
       fx$outcome_mod,
       .data = fx$dat,
       se_method = "linearization"
+    ),
+    class = "propensity_ipw_wt_truncated_error"
+  )
+  expect_error(
+    ipw(
+      fx$ps_mod,
+      fx$outcome_mod,
+      .data = fx$dat,
+      se_method = "robust"
     ),
     class = "propensity_ipw_wt_truncated_error"
   )
@@ -228,6 +280,33 @@ test_that("ipw() refuses weight-truncated unstabilized continuous weights", {
   )
 })
 
+test_that("ipw() refuses adaptively weight-truncated continuous weights", {
+  fx <- wt_trunc_ipw_continuous(stabilize = FALSE, method = "adaptive")
+  expect_gt(sum(is_unit_wt_truncated(fx$wts)), 0)
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, .data = fx$dat),
+    class = "propensity_ipw_wt_truncated_error"
+  )
+})
+
+test_that("an adaptive bound that moved no weight is still refused", {
+  # Under weak confounding the stabilized weights never reach the adaptive
+  # bound, so the truncation is recorded without changing a single value.
+  fx <- wt_trunc_ipw_continuous(
+    stabilize = TRUE,
+    method = "adaptive",
+    x1_effect = 0.2
+  )
+  expect_true(is_wt_truncated(fx$wts))
+  expect_equal(sum(is_unit_wt_truncated(fx$wts)), 0)
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, .data = fx$dat),
+    class = "propensity_ipw_wt_truncated_error"
+  )
+})
+
 test_that("ipw() refuses weight-truncated categorical weights", {
   fx <- wt_trunc_ipw_categorical()
 
@@ -242,6 +321,16 @@ test_that("ipw() refuses weight-truncated joint weights", {
 
   expect_error(
     ipw(fx$models, fx$outcome_mod),
+    class = "propensity_ipw_wt_truncated_error"
+  )
+})
+
+test_that("ipw() refuses weight-truncated weights for a declared joint exposure", {
+  fx <- wt_trunc_ipw_joint_exposure()
+  expect_true(causalgenerics::is_joint_exposure(fx$dat$joint))
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, .data = fx$dat),
     class = "propensity_ipw_wt_truncated_error"
   )
 })
@@ -368,9 +457,6 @@ test_that("the weight-truncation refusal names both honest routes", {
   expect_match(msg, "M-estimation", fixed = TRUE)
   expect_match(msg, "fixed-weight", fixed = TRUE)
 
-  # Record the snapshot only once the dedicated refusal is the one raised, so
-  # the message of another refusal is never written down as this one's.
-  skip_if_not(inherits(cnd, "propensity_ipw_wt_truncated_error"))
   expect_propensity_error(ipw(fx$ps_mod, fx$outcome_mod, .data = fx$dat))
 })
 
@@ -396,12 +482,6 @@ test_that("the weight-truncation refusal reads the same on every route", {
     expect_s3_class(cnd, "propensity_ipw_wt_truncated_error")
   }
 
-  skip_if_not(all(vapply(
-    cnds,
-    inherits,
-    logical(1),
-    what = "propensity_ipw_wt_truncated_error"
-  )))
   expect_propensity_error(ipw(
     continuous$ps_mod,
     continuous$outcome_mod,

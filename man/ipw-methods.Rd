@@ -1577,11 +1577,30 @@ before weighting. The stacked estimating equations rebuild the weights from
 the propensity score model on every evaluation, so a weight that is no longer
 a deterministic function of that model breaks the sandwich variance. Supplying
 weights built from a modified score errors on either standard error method;
-refit the weights from the unmodified propensity score model. An outcome model
-fit without weights also errors on either method. The outcome model must not
-carry an offset term on either method, since neither the stacked outcome score
-nor the linearization influence functions thread an offset; supplying one
-errors.
+refit the weights from the unmodified propensity score model.
+Density-trimmed weights for a continuous exposure (\code{ps_trim()} with
+\code{method = "density"} or \code{method = "resid"}) carry the trim record and are
+refused as trimmed weights.
+
+Weights bounded with \code{\link[=wt_trunc]{wt_trunc()}} are refused as well, with their own error,
+for a different reason. A bound on the weights is not a smooth function of the
+propensity score model's parameters, so the stacked sandwich would report an
+interval for the truncated estimand without saying so. The four methods also
+differ in kind. A fixed bound (\code{"wt"}, or \code{"adaptive"}, which depends only on
+the sample size) is known before the weights are seen, while a percentile
+bound (\code{"pctl"}, or \code{"count"}, which bounds at an observed weight) is estimated
+from the weights it modifies and would need an estimating equation of its own.
+Only the fixed case is a candidate for support, and relaxing the refusal for
+it first requires a simulation that measures the coverage of the M-estimation
+interval with the bound inside the stack. Until then, rebuild the weights
+without \code{\link[=wt_trunc]{wt_trunc()}} and report the M-estimation interval, or fit the outcome
+model with the truncated weights and report a fixed-weight sandwich, stating
+that it conditions on the bound.
+
+An outcome model fit without weights also errors on either method. The
+outcome model must not carry an offset term on either method, since neither
+the stacked outcome score nor the linearization influence functions thread an
+offset; supplying one errors.
 
 For a binary or categorical exposure, the outcome model formula must contain
 the exposure. The counterfactual designs are built by setting the exposure to
@@ -1683,10 +1702,11 @@ therefore stopped where its weights are built rather than here. \code{\link[=ps_
 repairs such a matrix, its categorical matrix method reading the closed
 interval so that a cell at an endpoint is bounded rather than refused, while
 \code{\link[=ps_trim]{ps_trim()}} holds the open interval as the weight functions do. Weights built
-from a truncated score are their own refusal here, since \code{\link[=ipw]{ipw()}} cannot yet
-account for a modified propensity score, so a separated fit is repaired for
-the weight functions rather than for this one. See \strong{Propensity scores at 0
-and 1} in \code{\link[=wt_ate]{wt_ate()}} for the remedy.
+from a trimmed or truncated score are their own refusal here, as are weights
+bounded with \code{\link[=wt_trunc]{wt_trunc()}}, since \code{\link[=ipw]{ipw()}} cannot yet account for a modified
+propensity score or a truncated weight, so a separated fit is repaired for the
+weight functions rather than for this one. See \strong{Propensity scores at 0 and
+1} in \code{\link[=wt_ate]{wt_ate()}} for the remedy.
 
 The propensity score model must also be fit without case weights, since the
 stacked propensity score equations are unweighted and a weighted fit would not
