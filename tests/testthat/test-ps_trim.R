@@ -2909,6 +2909,36 @@ test_that("ps_refit() refits a multinomial fit trimmed through the model route",
   )
 })
 
+test_that("ps_refit() refits a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_two_level_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+
+  # The retained scores are the refit model's probability of the level the
+  # binary path reads as focal, which is the one column a two-level fit reports.
+  by_hand <- nnet::multinom(
+    a2 ~ x1 + x2,
+    data = trim_model_data[meta$keep_idx, ],
+    trace = FALSE
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[meta$keep_idx] <- as.numeric(fitted(by_hand))
+
+  expect_s3_class(refitted, "ps_trim")
+  expect_true(is_refit(refitted))
+  expect_null(dim(refitted))
+  expect_type(vctrs::vec_data(refitted), "double")
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+  expect_identical(ps_trim_meta(refitted)$keep_idx, meta$keep_idx)
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")
