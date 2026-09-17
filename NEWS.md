@@ -164,6 +164,14 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* Assigning weights into a `psw` with `[<-` now refuses a value whose
+  trimming, truncation, or weight truncation record describes a different
+  modification from the target's, with the cast error that a differing
+  trimming or truncation flag already raises, naming the record that differs.
+  Such values were previously written under the target's record. A value that
+  carries no record, such as a plain number, is still accepted, and a value
+  modified the same way keeps the target's record unchanged.
+
 * `ps_refit()` on truncated scores, a vector or a matrix, now raises an error
   of class `propensity_method_error` that explains why: truncation keeps every
   unit, so a refit would reproduce the original model, and the model should be

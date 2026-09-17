@@ -142,7 +142,8 @@
 #' bounds, and whether the model was refit, so [is_refit()], the printed
 #' footer, and the bound comparison of a later combine still read it.
 #' Subassignment with `[<-` and `is.na<-` moves no unit and keeps the records
-#' whole. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
+#' whole; `[<-` refuses a value whose records describe a different
+#' modification, and accepts one with no record. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
 #' a slice does and cannot be told apart from one, so it drops the positions,
 #' and so do the helpers built on it or on a combine, such as
 #' `tidyr::replace_na()`, `dplyr::coalesce()`, `dplyr::if_else()`, and
@@ -2225,7 +2226,15 @@ cast_to_psw <- function(x, to) {
 # be converted to itself. The disagreeing field is named alongside them.
 #' @export
 vec_cast.psw.psw <- function(x, to, ...) {
+  # The modification records are compared too, by what they say about the
+  # modification, as a combine compares them: subassignment would otherwise
+  # write weights modified one way under a record describing another. A value
+  # with no record, and a prototype that took its record from agreeing inputs,
+  # has nothing to disagree with.
   problem <- psw_type_disagreement(x, to)
+  if (is.null(problem)) {
+    problem <- psw_record_disagreement(x, to)
+  }
   if (!is.null(problem)) {
     vctrs::stop_incompatible_cast(
       x,

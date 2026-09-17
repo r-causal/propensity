@@ -467,19 +467,25 @@ test_that("a bound mismatch is caught whichever pair of the fold meets it", {
   expect_true(is_wt_truncated(agreed))
 })
 
-test_that("weights bounded differently still cast to each other", {
-  # The bounds are compared only where two inputs are combined. A cast is also
-  # how subassignment and a type's own prototype are checked, and comparing
-  # there would refuse weights their own dropped-record prototype.
+test_that("weights bounded differently do not cast to each other", {
+  # Subassignment casts the value to the target and keeps the target's record,
+  # so a value bounded differently would be written under a bound that does not
+  # describe it. A prototype carries its inputs' bound without positions, so
+  # weights still cast to their own.
   w <- wt_truncated_psw()
   alt <- alt_wt_truncated_psw()
 
-  expect_silent(vec_cast(alt, w))
-  expect_silent({
-    w[seq_along(w)] <- alt
-  })
+  expect_error(vec_cast(alt, w), class = "vctrs_error_cast")
+  expect_error(
+    {
+      w[seq_along(w)] <- alt
+    },
+    class = "vctrs_error_cast"
+  )
   expect_identical(attr(w, "psw_trunc_meta"), wt_trunc_record())
   expect_true(is_wt_truncated(w))
+
+  expect_silent(vec_cast(w, vec_ptype(w)))
 })
 
 test_that("weights bounded alike combine whichever units the bound moved", {
