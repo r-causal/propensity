@@ -1318,13 +1318,22 @@ psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
 # their own and hold at any length.
 psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 
-# A modification record is judged against `to`, the object supplying it: the
-# record was written for `to`'s observations, so data arriving at `to`'s length
-# is the only data those indices describe. `n` is the number of observations the
-# data arrives at. Zero-length data is exempt for the reason a stabilization
-# score is: it lines up with nothing and so contradicts nothing, and a prototype
-# that keeps the record lets the restore building the real result carry it on to
-# the observations.
+# A modification record is judged against the number of observations it was
+# written for, which a positional record writes down as `n_obs`. `n` is the
+# number of observations the data arrives at. Zero-length data is exempt for the
+# reason a stabilization score is: it lines up with nothing and so contradicts
+# nothing, and a prototype that keeps the record lets the restore building the
+# real result carry it on to the observations.
+#
+# Reading the record's own length rather than `to`'s is what lets a combine of
+# a single vector keep the record. vctrs builds that result by restoring
+# against a zero-length prototype sliced from the input, which carries the
+# input's records, and the data arriving at the recorded length is the input's
+# own, in its own order. A combine of two or more vectors restores against the
+# prototype `vec_ptype2()` builds, which carries no modification record, so
+# nothing reaches the appended result. A record that writes down no length,
+# such as a calibration record, names no positions; it is judged against `to`,
+# and a prototype holding one has no observations for it to contradict.
 #
 # Any same-length operation keeps indices that may no longer point where they
 # did, a reordering or a subscript with duplicates included. Nothing rebuilding
@@ -1333,8 +1342,17 @@ psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 # given, which catches a length change from any route, but a same-length
 # rearrangement is beyond what either can see and is documented rather than
 # guarded.
-modification_meta_aligns <- function(n, to) {
-  n == 0 || n == length(to)
+modification_meta_aligns <- function(meta, n, to) {
+  if (n == 0) {
+    return(TRUE)
+  }
+
+  recorded <- meta$n_obs
+  if (is.null(recorded)) {
+    return(length(to) == 0 || n == length(to))
+  }
+
+  n == recorded
 }
 
 # What the joint record can still say once data has arrived at `n` observations.
@@ -1447,8 +1465,10 @@ aligned_psw_attrs <- function(to, n) {
     attrs["stabilization_score"] <- list(NULL)
   }
 
-  if (!modification_meta_aligns(n, to)) {
-    attrs[psw_modification_meta] <- list(NULL)
+  for (record in psw_modification_meta) {
+    if (!modification_meta_aligns(attrs[[record]], n, to)) {
+      attrs[record] <- list(NULL)
+    }
   }
 
   attrs[psw_joint_attr] <- list(
