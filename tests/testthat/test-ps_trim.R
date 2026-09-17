@@ -3223,6 +3223,57 @@ test_that("ps_refit() says how to reach a column the model does not read", {
   )
 })
 
+test_that("ps_refit() passes through an argument's own error", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  # Only a name the retained rows lack is a reason to pass `.data`. An error
+  # the expression raises for any other reason reaches the caller as written.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = stop("boom")),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+  expect_identical(conditionMessage(cnd), "boom")
+
+  # A name the expression reads that is available does not turn another error
+  # into a missing column.
+  expect_error(
+    ps_refit(trimmed, fit, weights = x1 + stop("boom")),
+    "boom",
+    class = "simpleError"
+  )
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = x1 + stop("boom")),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+
+  # A function the caller calls that cannot be found is not a column either.
+  cnd <- rlang::catch_cnd(
+    ps_refit(trimmed, fit, weights = no_such_function_zz(x1)),
+    classes = "error"
+  )
+  expect_false(inherits(cnd, "propensity_no_data_error"))
+
+  # A `.data` lookup of a missing column is relabeled like a bare name.
+  expect_error(
+    ps_refit(trimmed, fit, subset = .data$x2 > 0),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() relabels a missing name in the caller's language", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  withr::local_language("fr")
+  expect_error(
+    ps_refit(trimmed, fit, subset = x2 > 0),
+    class = "propensity_no_data_error"
+  )
+})
+
 test_that("ps_refit() refuses a model of every level for a vector of scores", {
   skip_if_not_installed("nnet")
 
@@ -3372,6 +3423,32 @@ test_that("the record of an inverted trim follows the scores", {
   # Scores of different levels are not scores of one trimming.
   combined <- expect_propensity_warning(vctrs::vec_c(inverted, as_given))
   expect_type(combined, "double")
+})
+
+test_that("a vector trim record without focal_inverted reads as not inverted", {
+  trimmed <- ps_trim(c(0.05, 0.3, 0.5, 0.7, 0.95), lower = 0.1, upper = 0.9)
+  expect_false(ps_trim_meta(trimmed)$focal_inverted)
+
+  bare_meta <- ps_trim_meta(trimmed)
+  bare_meta$focal_inverted <- NULL
+  bare <- new_trimmed_ps(vctrs::vec_data(trimmed), ps_trim_meta = bare_meta)
+
+  expect_identical(
+    trim_parameters(bare_meta),
+    trim_parameters(ps_trim_meta(trimmed))
+  )
+
+  combined <- expect_no_warning(vctrs::vec_c(bare, trimmed))
+  expect_s3_class(combined, "ps_trim")
+  expect_no_error(vctrs::vec_cast(bare, trimmed))
+
+  # A record that says the scores are inverted still differs.
+  inverted_meta <- bare_meta
+  inverted_meta$focal_inverted <- TRUE
+  expect_false(identical(
+    trim_parameters(inverted_meta),
+    trim_parameters(bare_meta)
+  ))
 })
 
 test_that("ps_trim() names the class of a fit it has no reading for", {

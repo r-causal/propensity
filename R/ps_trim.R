@@ -2107,6 +2107,9 @@ trim_parameters <- function(meta) {
     fields
   )
   params["density"] <- list(trim_density_parameters(meta$density))
+  # A record written without the field describes scores as the model reports
+  # them, which is what `FALSE` says.
+  params$focal_inverted <- isTRUE(meta$focal_inverted)
 
   params
 }
@@ -2747,7 +2750,8 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
 #
 # Data recovered from the model hold only the variables the model itself reads,
 # so an argument naming any other column fails there, and the error says how to
-# make that column available.
+# make that column available. Only a failure to find a name is relabeled: any
+# other error the argument raises is the caller's own and passes through.
 refit_extra_args <- function(
   dots,
   data,
@@ -2765,6 +2769,9 @@ refit_extra_args <- function(
     tryCatch(
       rlang::eval_tidy(dots[[i]], data = data),
       error = function(cnd) {
+        if (!is_unfound_name_error(cnd, dots[[i]], data)) {
+          rlang::cnd_signal(cnd)
+        }
         abort(
           c(
             "Can't evaluate {.arg {arg_names[[i]]}} against the retained rows.",
@@ -2781,6 +2788,31 @@ refit_extra_args <- function(
   })
   names(values) <- arg_names
   values
+}
+
+# Whether evaluating `quo` against `data` failed because a name it reads is
+# found neither among the columns nor in the environment it was written in.
+# Base R gives that failure no class of its own, so it is recognized by its
+# message, compared in the session's language against each name the
+# expression reads and cannot find. A `.data$` lookup of a missing column
+# raises rlang's own class.
+is_unfound_name_error <- function(cnd, quo, data) {
+  if (inherits(cnd, "rlang_error_data_pronoun_not_found")) {
+    return(TRUE)
+  }
+
+  env <- rlang::quo_get_env(quo)
+  read <- all.vars(rlang::quo_get_expr(quo))
+  unfound <- read[
+    !read %in% names(data) &
+      !vapply(read, exists, logical(1), envir = env)
+  ]
+  if (length(unfound) == 0) {
+    return(FALSE)
+  }
+
+  messages <- gettextf("object '%s' not found", unfound, domain = "R")
+  conditionMessage(cnd) %in% messages
 }
 
 # Whether `model` can refit what the trimming record was made from. A record of
