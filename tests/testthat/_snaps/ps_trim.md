@@ -274,6 +274,37 @@
       i Scores predicted from a fit with `na.action = na.exclude` are padded back to the full length of the data, so they outnumber the rows the model analyzed.
       i Trim scores from a fit whose `na.action` drops those rows, such as `stats::na.omit()`.
 
+# ps_refit() says how to reach a column the model does not read
+
+    Code
+      expr
+    Condition <propensity_no_data_error>
+      Error in `ps_refit()`:
+      ! Can't evaluate `subset` against the retained rows.
+      i Without `.data`, only the variables `model` reads are available as columns. Pass the data frame to `.data` to use any other column.
+      Caused by error:
+      ! object 'x2' not found
+
+# ps_refit() refuses a model of every level for a vector of scores
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! A binary propensity score needs the probability of one of the exposure's two levels.
+      x `model` was fit to 3 levels ("a", "b", and "c"), so it fits no single probability to read against a binary exposure.
+      i Fit the propensity score model to the exposure being weighted, or weight the exposure the model was fit to with `exposure_type = "categorical"`.
+
+# ps_refit() refuses a model of one probability for a matrix of scores
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! A matrix of trimmed propensity scores can only be refit with a model of the probability of every exposure level.
+      x `trimmed_ps` holds one column per level, and `model` is <multinom>, which fits a single probability.
+      i Refit with the model the scores were read from, such as a `nnet::multinom()` fit to all of the exposure's levels.
+
 # ps_trim() names the class of a fit it has no reading for
 
     Code

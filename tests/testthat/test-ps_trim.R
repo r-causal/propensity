@@ -3106,6 +3106,164 @@ test_that("ps_refit() evaluates subset and weights expressions from a function",
   expect_equal(as.numeric(refitted), expected, tolerance = 1e-10)
 })
 
+test_that("ps_refit() removes the model's weights when passed weights = NULL", {
+  weighted_data <- trim_model_data
+  weighted_data$w <- rep(1:3, length.out = nrow(weighted_data))
+  fit <- glm(
+    z ~ x1 + x2,
+    data = weighted_data,
+    family = binomial(),
+    weights = w
+  )
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- weighted_data[keep, ]
+
+  unweighted <- glm(z ~ x1 + x2, data = kept_rows, family = binomial())
+  weighted <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    weights = w
+  )
+  expect_false(isTRUE(all.equal(coef(unweighted), coef(weighted))))
+
+  by_hand <- function(model) {
+    expected <- rep(NA_real_, nrow(weighted_data))
+    expected[keep] <- predict(model, newdata = kept_rows, type = "response")
+    expected
+  }
+
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fit, .data = weighted_data)),
+    by_hand(weighted),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fit, .data = weighted_data, weights = NULL)),
+    by_hand(unweighted),
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() updates the model's formula with formula.", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+
+  by_hand <- glm(z ~ x1, data = kept_rows, family = binomial())
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      formula. = ~ . - x2
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+
+  # A formula held in a variable of the calling function is read there.
+  refit_within <- function(trimmed, fit) {
+    drop_x2 <- ~ . - x2
+    ps_refit(trimmed, fit, .data = trim_model_data, formula. = drop_x2)
+  }
+  expect_equal(
+    as.numeric(refit_within(trimmed, fit)),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() reads the .data and .env pronouns in its arguments", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+
+  x1 <- 0.25
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    subset = x1 > 0.25
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = .data$x1 > .env$x1
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() says how to reach a column the model does not read", {
+  fit <- glm(z ~ x1, data = trim_model_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.3, upper = 0.7)
+
+  expect_error(
+    ps_refit(trimmed, fit, subset = x2 > 0),
+    class = "propensity_no_data_error"
+  )
+  expect_propensity_error(ps_refit(trimmed, fit, subset = x2 > 0))
+
+  # With the data passed, the column is found.
+  expect_no_error(
+    ps_refit(trimmed, fit, .data = trim_model_data, subset = x2 > 0)
+  )
+})
+
+test_that("ps_refit() refuses a model of every level for a vector of scores", {
+  skip_if_not_installed("nnet")
+
+  trimmed <- ps_trim(
+    predict(trim_binary_fit(), type = "response"),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_error(
+    ps_refit(trimmed, trim_categorical_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+  expect_propensity_error(
+    ps_refit(trimmed, trim_categorical_fit(), .data = trim_model_data)
+  )
+})
+
+test_that("ps_refit() refuses a model of one probability for a matrix of scores", {
+  skip_if_not_installed("nnet")
+
+  trimmed <- ps_trim(
+    fitted(trim_categorical_fit()),
+    method = "ps",
+    .exposure = trim_model_data$trt
+  )
+
+  expect_error(
+    ps_refit(trimmed, trim_two_level_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+  expect_propensity_error(
+    ps_refit(trimmed, trim_two_level_fit(), .data = trim_model_data)
+  )
+  expect_error(
+    ps_refit(trimmed, trim_binary_fit(), .data = trim_model_data),
+    class = "propensity_model_family_error"
+  )
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")

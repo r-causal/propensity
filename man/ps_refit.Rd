@@ -42,7 +42,10 @@ data the refit is handed: a name is read from their columns first and
 otherwise from the environment \code{ps_refit()} was called from, so
 \code{subset = x1 > 0} refits on the retained rows where \code{x1} is positive. A
 logical or index vector supplied instead indexes the retained rows, not
-the full data.}
+the full data. The \code{.data} and \code{.env} pronouns are available to tell a
+column from a variable of the same name. Without \code{.data}, the retained
+rows hold only the variables \code{model} reads, so an argument naming any
+other column needs the data frame passed to \code{.data}.}
 }
 \value{
 A \code{ps_trim} object with re-estimated propensity scores for retained

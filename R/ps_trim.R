@@ -2529,7 +2529,10 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'   otherwise from the environment `ps_refit()` was called from, so
 #'   `subset = x1 > 0` refits on the retained rows where `x1` is positive. A
 #'   logical or index vector supplied instead indexes the retained rows, not
-#'   the full data.
+#'   the full data. The `.data` and `.env` pronouns are available to tell a
+#'   column from a variable of the same name. Without `.data`, the retained
+#'   rows hold only the variables `model` reads, so an argument naming any
+#'   other column needs the data frame passed to `.data`.
 #'
 #' @details
 #' ## Composing with a `subset`
@@ -2614,7 +2617,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   # Checked before any data are recovered or any model is refit, so that a
   # model that could never have produced the trimmed values is refused for that
   # rather than for whatever refitting it would run into.
-  check_refit_model(meta, model)
+  check_refit_model(meta, model, is.matrix(trimmed_ps))
   density_record <- is_density_trim_record(meta)
 
   from_model <- is.null(.data)
@@ -2651,7 +2654,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   # to work again would choose among rows it was never about. It is dropped
   # unless the caller names one, which is an instruction of its own.
   data_sub <- .data[meta$keep_idx, , drop = FALSE]
-  refit_args <- refit_extra_args(rlang::enquos(...), data_sub)
+  refit_args <- refit_extra_args(rlang::enquos(...), data_sub, from_model)
   if (!"subset" %in% names(refit_args)) {
     refit_args <- c(refit_args, list(subset = NULL))
   }
@@ -2718,14 +2721,40 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
 # retained rows: a column of `data` first, and otherwise a name in the frame the
 # argument was written in. `formula.` is a formula to update the model's own
 # with rather than something to read from the rows, so it is read without them.
-refit_extra_args <- function(dots, data) {
+#
+# Data recovered from the model hold only the variables the model itself reads,
+# so an argument naming any other column fails there, and the error says how to
+# make that column available.
+refit_extra_args <- function(
+  dots,
+  data,
+  from_model,
+  call = rlang::caller_env()
+) {
   arg_names <- names(dots)
   values <- lapply(seq_along(dots), function(i) {
     if (identical(arg_names[[i]], "formula.")) {
-      rlang::eval_tidy(dots[[i]])
-    } else {
-      rlang::eval_tidy(dots[[i]], data = data)
+      return(rlang::eval_tidy(dots[[i]]))
     }
+    if (!from_model) {
+      return(rlang::eval_tidy(dots[[i]], data = data))
+    }
+    tryCatch(
+      rlang::eval_tidy(dots[[i]], data = data),
+      error = function(cnd) {
+        abort(
+          c(
+            "Can't evaluate {.arg {arg_names[[i]]}} against the retained rows.",
+            i = "Without {.arg .data}, only the variables {.arg model} reads
+                 are available as columns. Pass the data frame to
+                 {.arg .data} to use any other column."
+          ),
+          error_class = "propensity_no_data_error",
+          call = call,
+          parent = cnd
+        )
+      }
+    )
   })
   names(values) <- arg_names
   values
@@ -2742,14 +2771,42 @@ refit_extra_args <- function(dots, data) {
 # by its class before the family is read, because the continuous family check
 # reads a model that carries no family as a least squares fit, and a two-level
 # `multinom` carries none and does not answer to `model_fits_levels()` either.
-check_refit_model <- function(meta, model, call = rlang::caller_env()) {
+#
+# The shape of the trimmed scores decides which kind of probability model is
+# needed: a matrix has a column for every level and a vector holds one
+# probability, so `matrix_record` is read from `trimmed_ps` itself.
+check_refit_model <- function(
+  meta,
+  model,
+  matrix_record,
+  call = rlang::caller_env()
+) {
   density_record <- is_density_trim_record(meta)
 
   if (!density_record) {
-    if (model_fits_levels(model)) {
-      return(invisible(NULL))
+    if (matrix_record) {
+      if (model_fits_levels(model)) {
+        return(invisible(NULL))
+      }
+
+      abort(
+        c(
+          "A matrix of trimmed propensity scores can only be refit with a
+           model of the probability of every exposure level.",
+          x = "{.arg trimmed_ps} holds one column per level, and
+               {.arg model} is {.cls {class(model)[[1]]}}, which fits a single
+               probability.",
+          i = "Refit with the model the scores were read from, such as a
+               {.fun nnet::multinom} fit to all of the exposure's levels."
+        ),
+        error_class = "propensity_model_family_error",
+        call = call
+      )
     }
 
+    # A vector of scores is the probability of one level, so a model that
+    # reports a probability for every level of three or more has nothing to
+    # refit it with, and the binary family check refuses such a model.
     check_binary_model_family(
       model,
       arg = "model",
