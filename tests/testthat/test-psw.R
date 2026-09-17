@@ -552,7 +552,7 @@ test_that("psw works with ggplot2", {
 })
 
 # Weights built from a modified propensity score carry the modification's
-# record: `ps_trim_meta`, `ps_trunc_meta`, or `ps_calib_meta`. Those records are
+# record: `ps_trim_meta` or `ps_trunc_meta`. Those records are
 # indexed by observation, so where an operation goes through vctrs they are kept
 # whenever the weights come back at the length the record was written for,
 # dropped when they do not, and left alone at zero length.
@@ -749,16 +749,148 @@ test_that("shortening a psw drops the trimming record silently", {
   expect_true(is_ps_trimmed(sliced))
 })
 
-test_that("shortening a psw drops truncation and calibration records silently", {
+test_that("shortening a psw drops the truncation record silently", {
   truncated <- truncated_psw()
   sub <- expect_silent(truncated[1:2])
   expect_null(ps_trunc_meta(sub))
   expect_true(is_ps_truncated(sub))
+})
 
+# A calibration record names the curve the scores were calibrated with and
+# whether it was smoothed. It holds no positions, so like the categorical
+# attributes it means the same thing at any length.
+
+unsmoothed_calibrated_psw <- function() {
+  exposure <- c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  ps <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    exposure,
+    smooth = FALSE
+  )
+
+  wt_ate(ps, exposure, exposure_type = "binary", .focal_level = 1)
+}
+
+test_that("shortening a psw keeps the calibration record", {
   calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
   sub <- expect_silent(calibrated[1:2])
-  expect_null(ps_calib_meta(sub))
+  expect_identical(ps_calib_meta(sub), calib_meta)
   expect_true(is_ps_calibrated(sub))
+
+  sliced <- expect_silent(vec_slice(calibrated, c(3, 1, 1)))
+  expect_identical(ps_calib_meta(sliced), calib_meta)
+
+  repeated <- expect_silent(rep(calibrated, 2))
+  expect_identical(ps_calib_meta(repeated), calib_meta)
+})
+
+test_that("arithmetic on a shortened calibrated psw keeps the calibration record", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
+  sub <- calibrated[1:4]
+  out <- expect_silent(sub * sub)
+  expect_identical(ps_calib_meta(out), calib_meta)
+})
+
+test_that("combining calibrated psw objects keeps a calibration record they share", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+
+  combined <- expect_silent(c(calibrated, calibrated[1:3]))
+  expect_length(combined, 13)
+  expect_identical(ps_calib_meta(combined), calib_meta)
+  expect_true(is_ps_calibrated(combined))
+
+  combined <- expect_silent(vec_c(calibrated))
+  expect_identical(ps_calib_meta(combined), calib_meta)
+
+  unchopped <- expect_silent(
+    list_unchop(list(calibrated[4:10], calibrated[1:3]))
+  )
+  expect_identical(ps_calib_meta(unchopped), calib_meta)
+
+  # Two separately built sets of weights describe the same calibration.
+  separate <- expect_silent(c(calibrated, calibrated_psw()))
+  expect_identical(ps_calib_meta(separate), calib_meta)
+})
+
+test_that("combining psw objects keeps a calibration record only one records", {
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+  unrecorded <- psw(
+    rep(1, 3),
+    estimand = estimand(calibrated),
+    calibrated = TRUE
+  )
+  attr(unrecorded, "exposure_type") <- attr(calibrated, "exposure_type")
+  expect_null(ps_calib_meta(unrecorded))
+
+  out <- expect_silent(c(calibrated, unrecorded))
+  expect_identical(ps_calib_meta(out), calib_meta)
+
+  out <- expect_silent(c(unrecorded, calibrated))
+  expect_identical(ps_calib_meta(out), calib_meta)
+})
+
+test_that("combining psw objects drops calibration records that disagree", {
+  smoothed <- calibrated_psw()
+  unsmoothed <- unsmoothed_calibrated_psw()
+  expect_false(
+    identical(ps_calib_meta(smoothed), ps_calib_meta(unsmoothed))
+  )
+
+  out <- collect_warning_classes(c(smoothed, unsmoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_s3_class(out$value, "psw")
+  expect_length(out$value, 20)
+  expect_null(ps_calib_meta(out$value))
+  expect_true(is_ps_calibrated(out$value))
+
+  # The drop is reported once and holds whatever order the inputs come in.
+  out <- collect_warning_classes(c(smoothed, unsmoothed, smoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+
+  out <- collect_warning_classes(c(smoothed, smoothed, unsmoothed))
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+})
+
+test_that("a psw product drops calibration records that disagree", {
+  out <- collect_warning_classes(calibrated_psw() * unsmoothed_calibrated_psw())
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(ps_calib_meta(out$value))
+  expect_true(is_ps_calibrated(out$value))
+})
+
+test_that("a cast into a calibrated psw carries the calibration record", {
+  calibrated <- calibrated_psw()
+
+  cast <- expect_silent(vec_cast(c(1, 2, 3), vec_ptype(calibrated)))
+  expect_identical(ps_calib_meta(cast), ps_calib_meta(calibrated))
+})
+
+test_that("a ps_calib keeps its record at any length", {
+  calibrated <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  )
+  calib_meta <- ps_calib_meta(calibrated)
+
+  expect_identical(ps_calib_meta(calibrated[1:3]), calib_meta)
+  expect_identical(ps_calib_meta(vec_slice(calibrated, 1:3)), calib_meta)
+  expect_identical(ps_calib_meta(unique(calibrated)), calib_meta)
+  expect_identical(
+    ps_calib_meta(c(calibrated, calibrated[1:3])),
+    calib_meta
+  )
+  expect_identical(
+    ps_calib_meta(list_unchop(list(calibrated[4:10], calibrated[1:3]))),
+    calib_meta
+  )
 })
 
 test_that("a zero-length psw restore keeps the trimming record silently", {
@@ -1429,9 +1561,11 @@ test_that("combining psw objects drops the modification records", {
   expect_null(ps_trunc_meta(combined))
   expect_true(is_ps_truncated(combined))
 
+  # The calibration record holds no positions, so it survives the
+  # concatenation.
   calibrated <- calibrated_psw()
   combined <- expect_silent(c(calibrated, calibrated))
-  expect_null(ps_calib_meta(combined))
+  expect_identical(ps_calib_meta(combined), ps_calib_meta(calibrated))
   expect_true(is_ps_calibrated(combined))
 })
 
