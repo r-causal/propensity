@@ -1,5 +1,11 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_refit()` now refits a binary score trimmed from a two-level
+  `nnet::multinom()` fit. It previously failed with an error from
+  `predict()`, which offers no `"response"` type for a `multinom`; the refit
+  now reads the probability of the second level, as the model route of
+  `ps_trim()` does.
+
 * New `wt_trunc()` bounds extreme weights on the scale of the weights
   themselves, so it applies to weights for any exposure type, including the
   density-ratio weights of a continuous exposure. It offers four methods:

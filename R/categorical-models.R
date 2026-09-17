@@ -212,6 +212,14 @@ extract_binary_ps.multinom <- function(model, call = rlang::caller_env()) {
   as.numeric(stats::fitted(model))
 }
 
+# `predict()` on a `multinom` offers no response type. Its probabilities for a
+# two-level fit are the one column `fitted()` reports, the probability of the
+# second level.
+#' @export
+predict_binary_ps.multinom <- function(model, newdata) {
+  as.numeric(stats::predict(model, newdata = newdata, type = "probs"))
+}
+
 # A `multinom` keeps no model frame, so `model.frame()` rebuilds one by
 # re-evaluating the fitting call in the environment the formula came from. That
 # environment no longer holds the arguments of a fit made inside a function, and

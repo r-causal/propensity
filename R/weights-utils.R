@@ -1893,6 +1893,17 @@ extract_binary_ps.default <- function(model, call = rlang::caller_env()) {
   stats::predict(model, type = "response")
 }
 
+# The probability of a binary exposure a fitted model predicts for `newdata`,
+# the counterpart of `extract_binary_ps()` for rows the model was not read over.
+predict_binary_ps <- function(model, newdata) {
+  UseMethod("predict_binary_ps")
+}
+
+#' @export
+predict_binary_ps.default <- function(model, newdata) {
+  stats::predict(model, newdata = newdata, type = "response")
+}
+
 # The propensity score a fitted model reports, read according to the exposure it
 # is a model of. A binary exposure needs the probability of the exposure, which
 # only the binomial families fit; a continuous exposure needs a conditional mean

@@ -2686,11 +2686,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   } else {
     # For vector propensity scores (binary exposures)
     new_ps <- rep(NA_real_, n_obs)
-    new_ps[meta$keep_idx] <- stats::predict(
-      refit_model,
-      newdata = data_sub,
-      type = "response"
-    )
+    new_ps[meta$keep_idx] <- predict_binary_ps(refit_model, data_sub)
   }
 
   meta$refit <- TRUE
