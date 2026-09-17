@@ -344,7 +344,10 @@
 #' row per unit, so the weight functions read the data frame as they read the
 #' matrix and a subset of its rows re-indexes the record. A data frame whose
 #' columns are not all trimmed with the same record is refused by the weight
-#' functions with an error of class `propensity_matrix_type_error`.
+#' functions with an error of class `propensity_matrix_type_error`. A matrix
+#' without column names gives columns named `V1`, `V2`, and so on, which the
+#' weight functions then refuse because they name no exposure level, so name
+#' the columns after the exposure levels before converting.
 #'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
@@ -2669,6 +2672,32 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
   diff(vec_data(x), lag = lag, differences = differences, ...)
 }
 
+# A column of a data frame made from a trimmed score matrix carries the
+# matrix's record, whose retained rows were chosen by a rule on every column at
+# once. Refitting the column alone would fit a model of one level on rows no
+# rule about that level chose, so the matrix is refit instead.
+check_refit_not_matrix_column <- function(
+  x,
+  meta,
+  call = rlang::caller_env()
+) {
+  if (is.matrix(x) || !isTRUE(meta$is_matrix)) {
+    return(invisible(x))
+  }
+
+  abort(
+    c(
+      "{.fn ps_refit} cannot refit one column of a trimmed score matrix.",
+      x = "These scores carry the record of a categorical trim, which chose the
+           retained rows from every column at once.",
+      i = "Refit the trimmed matrix with {.fn ps_refit} before converting it
+           with {.fn as.data.frame}."
+    ),
+    error_class = "propensity_method_error",
+    call = call
+  )
+}
+
 # Truncation keeps every unit, so the retained sample a refit reads is the whole
 # sample: refitting would reproduce the original model and hand back the scores
 # before they were bounded. A class check would say only that the object is not
@@ -2710,7 +2739,10 @@ check_refit_not_truncated <- function(x, call = rlang::caller_env()) {
 #' @param trimmed_ps A `ps_trim` object returned by [ps_trim()]. Refitting reads
 #'   the retained positions out of the trimming record, so an object whose
 #'   record was dropped or no longer covers it raises an error of class
-#'   `propensity_missing_meta_error`; see [ps_trim()]. Truncated scores from
+#'   `propensity_missing_meta_error`; see [ps_trim()]. A single column of a data
+#'   frame made from a trimmed score matrix raises an error of class
+#'   `propensity_method_error`; refit the matrix before converting it.
+#'   Truncated scores from
 #'   [ps_trunc()] keep every unit, so refitting them would return the original
 #'   model's scores, and they raise an error of class
 #'   `propensity_method_error`.
@@ -2820,6 +2852,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   check_refit_not_truncated(trimmed_ps)
   assert_class(trimmed_ps, "ps_trim")
   meta <- ps_trim_meta(trimmed_ps)
+  check_refit_not_matrix_column(trimmed_ps, meta)
 
   # Get the number of observations
   n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)

@@ -10,7 +10,10 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 \item{trimmed_ps}{A \code{ps_trim} object returned by \code{\link[=ps_trim]{ps_trim()}}. Refitting reads
 the retained positions out of the trimming record, so an object whose
 record was dropped or no longer covers it raises an error of class
-\code{propensity_missing_meta_error}; see \code{\link[=ps_trim]{ps_trim()}}. Truncated scores from
+\code{propensity_missing_meta_error}; see \code{\link[=ps_trim]{ps_trim()}}. A single column of a data
+frame made from a trimmed score matrix raises an error of class
+\code{propensity_method_error}; refit the matrix before converting it.
+Truncated scores from
 \code{\link[=ps_trunc]{ps_trunc()}} keep every unit, so refitting them would return the original
 model's scores, and they raise an error of class
 \code{propensity_method_error}.}

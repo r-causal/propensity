@@ -412,7 +412,10 @@ data frame whose columns are \code{ps_trim} vectors carrying the matrix's record
 row per unit, so the weight functions read the data frame as they read the
 matrix and a subset of its rows re-indexes the record. A data frame whose
 columns are not all trimmed with the same record is refused by the weight
-functions with an error of class \code{propensity_matrix_type_error}.
+functions with an error of class \code{propensity_matrix_type_error}. A matrix
+without column names gives columns named \code{V1}, \code{V2}, and so on, which the
+weight functions then refuse because they name no exposure level, so name
+the columns after the exposure levels before converting.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it

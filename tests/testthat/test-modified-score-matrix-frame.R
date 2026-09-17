@@ -269,3 +269,37 @@ test_that("a frame whose columns disagree about the record is refused", {
     class = "propensity_matrix_type_error"
   )
 })
+
+test_that("ps_refit() refuses a single column of a trimmed matrix's data frame", {
+  fx <- frame_scores_data()
+  df <- as.data.frame(frame_trimmed(fx))
+  binary_fit <- glm(
+    I(z == "a") ~ x,
+    data = fx$dat,
+    family = binomial()
+  )
+
+  expect_error(
+    ps_refit(df$a, model = binary_fit),
+    class = "propensity_method_error"
+  )
+  expect_propensity_error(ps_refit(df$a, model = fx$fit))
+})
+
+test_that("weights refuse the data frame of an unnamed matrix", {
+  fx <- frame_scores_data()
+  bare <- fx$p
+  dimnames(bare) <- NULL
+  expect_warning(
+    unnamed <- ps_trim(bare, method = "ps", lower = 0.05, .exposure = fx$dat$z),
+    class = "propensity_matrix_no_names_warning"
+  )
+
+  expect_error(
+    suppressWarnings(
+      wt_ate(as.data.frame(unnamed), .exposure = fx$dat$z),
+      classes = "propensity_no_refit_warning"
+    ),
+    class = "propensity_matrix_names_error"
+  )
+})

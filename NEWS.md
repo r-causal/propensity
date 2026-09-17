@@ -185,7 +185,8 @@
   warning. The weight functions now read such a data frame as they read the
   matrix, and `ipw()` refuses the weights in the same way. A data frame whose
   columns disagree about the record is refused with an error of class
-  `propensity_matrix_type_error`.
+  `propensity_matrix_type_error`, and `ps_refit()` refuses a single column of
+  such a data frame with an error of class `propensity_method_error`.
 
 * Combining `psw` objects now compares the trimming and truncation records of
   the scores they were built from, including whether the trimmed model was
