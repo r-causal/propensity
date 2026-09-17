@@ -287,6 +287,43 @@ test_that("ps_refit() keeps a spread the caller supplied", {
   )
 })
 
+test_that("ps_refit() reads a density trim's spread over the rows the refit analyzed", {
+  dat <- sim_dose_trim()
+  n <- nrow(dat)
+  fit <- lm(a ~ x1 + x2, data = dat)
+  trimmed <- ps_trim(fit, method = "density", lower = 0.05)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  # A `subset` passed through narrows the rows the refit analyzes below the
+  # rows the trim kept, and the spread describes the analyzed rows alone. It
+  # indexes the kept rows, which are the data the refit is handed.
+  positive <- dat$x1[keep] > 0
+  expect_no_warning(refit <- ps_refit(trimmed, fit, subset = positive))
+  by_hand <- lm(a ~ x1 + x2, data = dat[keep, ], subset = positive)
+  expect_lt(length(fitted(by_hand)), length(keep))
+  expect_equal(
+    ps_trim_meta(refit)$sigma,
+    sqrt(mean(residuals(by_hand)^2)),
+    tolerance = 1e-10
+  )
+
+  # A covariate the refit formula adds, missing on some kept rows, leaves those
+  # rows out of the refit, and so out of the spread.
+  withr::local_seed(53)
+  dat$x3 <- rnorm(n)
+  dat$x3[keep[c(2, 5, 9)]] <- NA_real_
+  expect_no_warning(
+    refit_x3 <- ps_refit(trimmed, fit, .data = dat, formula. = ~ . + x3)
+  )
+  by_hand_x3 <- lm(a ~ x1 + x2 + x3, data = dat[keep, ])
+  expect_equal(
+    ps_trim_meta(refit_x3)$sigma,
+    sqrt(mean(residuals(by_hand_x3)^2)),
+    tolerance = 1e-10
+  )
+})
+
 # ---- ps_refit(): refusals ----------------------------------------------------
 
 test_that("ps_refit() refuses a model of level probabilities for a density trim", {

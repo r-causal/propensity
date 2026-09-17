@@ -1321,6 +1321,7 @@ calculate_weight_from_modified_ps <- function(
   weight_fn,
   modification_type = c("trim", "trunc", "calib"),
   ...,
+  density_supplied = TRUE,
   call = rlang::caller_env(),
   user_env = rlang::caller_env(2)
 ) {
@@ -1375,6 +1376,16 @@ calculate_weight_from_modified_ps <- function(
       user_env = user_env,
       ...
     )
+  } else if (is_density_trim_record(attr(.propensity, "ps_trim_meta"))) {
+    base_wt <- weight_from_density_trim(
+      .propensity,
+      .exposure = .exposure,
+      weight_fn = weight_fn,
+      ...,
+      density_supplied = density_supplied,
+      call = call,
+      user_env = user_env
+    )
   } else {
     # Convert to numeric for vector propensity scores
     numeric_ps <- as.numeric(.propensity)
@@ -1419,6 +1430,112 @@ calculate_weight_from_modified_ps <- function(
   }
 
   base_wt
+}
+
+# The weights a density trim of a dose model describes. The record holds the
+# family and the spread the trim was decided at, and the weights are read under
+# both, so that the retained units and the density ratio describe the same
+# density. A family or a spread the caller also supplies is a second instruction
+# about the same quantity and is refused rather than silently set aside; a
+# family that agrees with the record changes nothing. `density_supplied` says
+# whether the caller wrote `.density`, since the method's default is not an
+# instruction.
+weight_from_density_trim <- function(
+  .propensity,
+  .exposure,
+  weight_fn,
+  ...,
+  density_supplied,
+  call,
+  user_env
+) {
+  meta <- attr(.propensity, "ps_trim_meta")
+  args <- rlang::list2(...)
+
+  if (!is.null(args$.sigma)) {
+    abort(
+      c(
+        "{.arg .sigma} cannot be used with a density-trimmed dose model.",
+        x = "The trimming record holds the spread the conditional density was
+             read at, and {.arg .sigma} would be a second spread for the same
+             density.",
+        i = "Drop {.arg .sigma}. To read the density at a spread of your own,
+             pass it to {.fun ps_trim} when trimming, and {.fun ps_refit}
+             keeps it."
+      ),
+      error_class = "propensity_sigma_error",
+      call = call
+    )
+  }
+
+  if (density_supplied && !is.null(args$.density)) {
+    density <- as_density_spec(args$.density, arg = ".density", call = call)
+    if (!density_specs_agree(density, meta$density)) {
+      recorded <- density_record_label(meta$density)
+      supplied <- density_record_label(density)
+      abort(
+        c(
+          "{.arg .density} must be the density the dose model was trimmed
+           under.",
+          x = "The trimming record holds {recorded}, and {.arg .density} is
+               {supplied}.",
+          i = "The units were kept by how plausible their dose is under the
+               recorded density, so the weights are read under it too. Drop
+               {.arg .density}, or trim the dose model again under the density
+               you want."
+        ),
+        error_class = "propensity_density_error",
+        call = call
+      )
+    }
+  }
+
+  args$.sigma <- meta$sigma
+  args$.density <- meta$density
+  args$sigma_source <- meta$sigma_kind
+
+  rlang::inject(weight_fn(
+    as.numeric(.propensity),
+    .exposure = .exposure,
+    call = call,
+    user_env = user_env,
+    !!!args
+  ))
+}
+
+# A density as a refusal names it: the constructor call that builds it, with the
+# estimator of its scale when the specification names one, since two
+# specifications of one family can differ in that alone.
+density_record_label <- function(density) {
+  constructor <- switch(
+    density$family,
+    normal = "dens_normal",
+    t = "dens_t",
+    laplace = "dens_laplace",
+    kernel = "dens_kernel",
+    "function" = "dens_fn",
+    density$family
+  )
+  arguments <- if (identical(density$family, "function")) {
+    "<function>"
+  } else if (length(density$params) > 0) {
+    paste0(
+      names(density$params),
+      " = ",
+      vapply(density$params, format_density_param, character(1))
+    )
+  }
+  if (!is.null(density$sigma_method)) {
+    arguments <- c(
+      arguments,
+      paste0(
+        "sigma_method = ",
+        encodeString(density$sigma_method, quote = "\"")
+      )
+    )
+  }
+  label <- paste0(constructor, "(", paste(arguments, collapse = ", "), ")")
+  cli::format_inline("{.code {label}}")
 }
 
 # Whether a modified score and the exposure it is weighted against describe the
@@ -1841,6 +1958,7 @@ handle_data_frame_weight_calculation <- function(
   .untreated = NULL,
   fn_name,
   ...,
+  density_supplied = TRUE,
   call = rlang::caller_env(),
   user_env = rlang::caller_env(2)
 ) {
@@ -1938,6 +2056,7 @@ handle_data_frame_weight_calculation <- function(
       .focal_level = focal_params$.focal_level,
       .reference_level = focal_params$.reference_level,
       ...,
+      density_supplied = density_supplied,
       call = call
     ))
   }

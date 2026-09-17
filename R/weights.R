@@ -510,6 +510,12 @@
 #'   nothing more, and [ipw()] refuses such weights; see **Continuous
 #'   exposures** in Details.
 #'
+#'   A dose model trimmed with [ps_trim()] holds the spread its trim was read
+#'   at, and weights built from it are read at that spread, which
+#'   `density_meta()` records as `sigma_value` as well. A `.sigma` supplied
+#'   with such a trim would be a second spread for the same density and is
+#'   refused with an error of class `propensity_sigma_error`.
+#'
 #'   Must be numeric, and applies only to continuous exposures. `.sigma` sits in
 #'   the third position, which is where a value meant for `exposure_type`
 #'   arrives when it is supplied without a name, so anything else is refused
@@ -537,6 +543,11 @@
 #'   `.density` sits after `...` and so can only be supplied by name. The family
 #'   the weights were built from is recorded on the result and read back with
 #'   [density_meta()].
+#'
+#'   Weights built from a dose model trimmed with [ps_trim()] are read under the
+#'   family the trim recorded, whatever the default says. A `.density` that
+#'   names another family, other parameters, or another `sigma_method` is
+#'   refused with an error of class `propensity_density_error`.
 #' @param numerator How the marginal density that stabilizes a continuous
 #'   exposure's weights is obtained, described under **Stabilization** in
 #'   Details. Either `"marginal"`, the default, which reads the family
@@ -919,7 +930,8 @@ wt_ate.numeric <- function(
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
-  user_env = rlang::caller_env()
+  user_env = rlang::caller_env(),
+  sigma_source = NULL
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -960,7 +972,16 @@ wt_ate.numeric <- function(
   # in the same place and for the same reason.
   .density <- as_density_spec(.density, arg = ".density", call = call)
   check_density_arg(.density, exposure_type, call = call)
-  check_sigma_method(.sigma, .density, call = call)
+
+  # `sigma_source` says the spread in `.sigma` is one a trimming record holds
+  # rather than one the caller wrote, and names how the record came by it. The
+  # two checks below exist to keep a caller's spread from replacing the one the
+  # family estimates, so a recorded spread, which is the family's own or one the
+  # caller fixed when trimming, is not held to them.
+  sigma_from_record <- !is.null(sigma_source)
+  if (!sigma_from_record) {
+    check_sigma_method(.sigma, .density, call = call)
+  }
 
   numerator <- rlang::arg_match(numerator, error_call = call)
   check_numerator(
@@ -968,7 +989,7 @@ wt_ate.numeric <- function(
     exposure_type,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
-    .sigma = .sigma,
+    .sigma = if (!sigma_from_record) .sigma,
     numerator_model = numerator_model,
     call = call
   )
@@ -1042,6 +1063,7 @@ wt_ate.numeric <- function(
       numerator_model = numerator_model,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
+      sigma_source = sigma_source,
       call = call
     )
   } else {
@@ -1109,6 +1131,7 @@ wt_ate.data.frame <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    density_supplied = !missing(.density),
     numerator = numerator,
     .treated = .treated,
     .untreated = .untreated,
@@ -1332,6 +1355,7 @@ ate_continuous <- function(
   numerator_model = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
+  sigma_source = NULL,
   call = rlang::caller_env()
 ) {
   # Every quantity below is computed from the exposure and the fitted means
@@ -1442,7 +1466,12 @@ ate_continuous <- function(
   attr(wt, "density_meta") <- new_density_meta(
     density = .density,
     numerator = numerator,
-    sigma = density_sigma_source(.sigma, .density),
+    # A spread read from a trimming record keeps the source the record gave it.
+    sigma = if (is.null(sigma_source)) {
+      density_sigma_source(.sigma, .density)
+    } else {
+      sigma_source
+    },
     # A spread of one number describes the conditional density of every unit, so
     # it is a constant the ratio can be rebuilt from and the record keeps it. One
     # number per observation describes each unit's density separately, and there
@@ -2714,7 +2743,8 @@ wt_cens.numeric <- function(
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
-  user_env = rlang::caller_env()
+  user_env = rlang::caller_env(),
+  sigma_source = NULL
 ) {
   check_call_arg(call)
 
@@ -2761,6 +2791,7 @@ wt_cens.numeric <- function(
     .density = .density,
     numerator = numerator,
     call = call,
+    sigma_source = sigma_source,
     ...
   )
 
@@ -2804,6 +2835,7 @@ wt_cens.data.frame <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    density_supplied = !missing(.density),
     numerator = numerator,
     ...
   )
@@ -2935,6 +2967,7 @@ wt_ate.ps_trim <- function(
     .exposure = .exposure,
     weight_fn = wt_ate.numeric,
     modification_type = "trim",
+    density_supplied = !missing(.density),
     .sigma = .sigma,
     exposure_type = exposure_type,
     .focal_level = .focal_level,
@@ -3255,6 +3288,7 @@ wt_cens.ps_trim <- function(
     .exposure = .exposure,
     weight_fn = wt_cens.numeric,
     modification_type = "trim",
+    density_supplied = !missing(.density),
     .sigma = .sigma,
     exposure_type = exposure_type,
     .focal_level = .focal_level,

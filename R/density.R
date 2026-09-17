@@ -984,8 +984,12 @@ continuous_density_ratio <- function(
 
   # The marginal density is the same family read at the exposure's own center
   # and spread, so it is standardized by those rather than by the conditional
-  # spread. A kernel numerator is therefore fit on its own values.
+  # spread. A kernel numerator is therefore fit on its own values, and only on
+  # those of the units the conditional density reads: a unit with no fitted
+  # mean, such as one a trim set aside, is outside the population the moments
+  # were read over and carries no weight, so it has no part in the fit either.
   z_a <- (exposure - mu_a) / sigma_a
+  z_a[is.na(z)] <- NA_real_
   f_num <- density_eval_present(density, z_a, call = call) / sigma_a
 
   f_num / f_den

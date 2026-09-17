@@ -1233,11 +1233,14 @@ test_that("a missing fitted value leaves a weight the density was not asked abou
   z <- (exposure[present] - mu[present]) / sigma
   f_den <- continuous_density_kde(z) / sigma
 
-  # The exposure is whole, so the marginal density is still fit on all of it.
-  f_num <- continuous_density_kde(continuous_density_z_a()) /
-    continuous_density_sd_a()
+  # The marginal density is read over the units with a fitted mean, which are
+  # the only ones weighted: its moments and the kernel fit on it both skip the
+  # units whose mean is missing, although their exposure is present.
+  mu_a <- mean(exposure[present])
+  sd_a <- sqrt(mean((exposure[present] - mu_a)^2))
+  f_num <- continuous_density_kde((exposure[present] - mu_a) / sd_a) / sd_a
 
-  expect_equal(weights[present], f_num[present] / f_den, tolerance = 1e-12)
+  expect_equal(weights[present], f_num / f_den, tolerance = 1e-12)
 })
 
 test_that("a missing exposure is left out of the numerator as well", {
@@ -1309,9 +1312,9 @@ test_that("missing conditional means leave those weights missing in every family
     expect_identical(which(is.na(weights)), missing_at)
 
     f_den <- family$g(z) / sigma
-    f_num <- family$g(z_a) / sd_a
+    f_num <- family$g(z_a[present]) / sd_a
 
-    expect_equal(weights[present], f_num[present] / f_den, tolerance = 1e-12)
+    expect_equal(weights[present], f_num / f_den, tolerance = 1e-12)
   }
 })
 

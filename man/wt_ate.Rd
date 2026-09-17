@@ -287,6 +287,12 @@ data that nothing rebuilds, so the record holds where it came from and
 nothing more, and \code{\link[=ipw]{ipw()}} refuses such weights; see \strong{Continuous
 exposures} in Details.
 
+A dose model trimmed with \code{\link[=ps_trim]{ps_trim()}} holds the spread its trim was read
+at, and weights built from it are read at that spread, which
+\code{density_meta()} records as \code{sigma_value} as well. A \code{.sigma} supplied
+with such a trim would be a second spread for the same density and is
+refused with an error of class \code{propensity_sigma_error}.
+
 Must be numeric, and applies only to continuous exposures. \code{.sigma} sits in
 the third position, which is where a value meant for \code{exposure_type}
 arrives when it is supplied without a name, so anything else is refused
@@ -415,7 +421,12 @@ ignored outside a continuous one.
 
 \code{.density} sits after \code{...} and so can only be supplied by name. The family
 the weights were built from is recorded on the result and read back with
-\code{\link[=density_meta]{density_meta()}}.}
+\code{\link[=density_meta]{density_meta()}}.
+
+Weights built from a dose model trimmed with \code{\link[=ps_trim]{ps_trim()}} are read under the
+family the trim recorded, whatever the default says. A \code{.density} that
+names another family, other parameters, or another \code{sigma_method} is
+refused with an error of class \code{propensity_density_error}.}
 
 \item{numerator}{How the marginal density that stabilizes a continuous
 exposure's weights is obtained, described under \strong{Stabilization} in

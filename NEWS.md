@@ -13,6 +13,18 @@
   trims that differ in any of them do not combine. A dose model asked for any
   other method, a model of a probability asked for either density method, and a
   level argument on a dose model are refused with informative errors.
+  `ps_refit()` refits a trimmed dose model's conditional mean on the retained
+  rows and re-estimates its spread there under the recorded family, keeping a
+  spread the caller supplied. `wt_ate()` and `wt_cens()` build weights from the
+  trim under the family and spread its record holds, refuse a `.density` that
+  disagrees with the record or any `.sigma`, and label the result as trimmed;
+  `ipw()` refuses those weights as it refuses other trimmed weights.
+
+* The marginal numerator of a `dens_kernel()` density is now fit only on the
+  units that have a conditional mean. A unit whose fitted mean was missing but
+  whose dose was present already took no part in the numerator's center and
+  spread and got no weight, yet its standardized dose still entered the kernel
+  fit, which changed the weights of every other unit.
 
 * Weights for a continuous exposure can no longer be built from a trimmed,
   truncated, or calibrated score. A conditional mean whose values happened to
@@ -33,9 +45,10 @@
   the family a density is read from. Each refusal names the
   routes for a dose: trimming the dose model with
   `ps_trim(method = "density")`, or building its weights with `wt_ate()` and
-  bounding the weights with `wt_trunc()`. Until those routes are available,
-  build the weights of a continuous exposure from the dose model or its fitted
-  means directly, without a score modification.
+  bounding the weights with `wt_trunc()`. The first is described above;
+  `wt_trunc()` is not yet available, so until it is, a dose's weights that
+  should keep every unit are built from the dose model or its fitted means
+  directly.
 
   A data frame of scores now behaves as the vector it holds does. A trimmed,
   truncated, or calibrated column in a data frame passed to any `wt_*()`

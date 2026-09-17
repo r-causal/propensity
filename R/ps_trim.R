@@ -2507,7 +2507,11 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'   Trimmed propensity scores are refit only by a model of the probability of
 #'   the exposure; a model of a conditional mean, such as a [stats::lm()] fit
 #'   or a gaussian [stats::glm()], never produced them and raises an error of
-#'   class `propensity_model_family_error`.
+#'   class `propensity_model_family_error`. A dose model trimmed with
+#'   `method = "density"` or `method = "resid"` is refit only by a model of
+#'   the dose's conditional mean, such as a gaussian [stats::glm()],
+#'   [stats::lm()], [mgcv::gam()], or [MASS::rlm()] fit, and any other model,
+#'   such as one of a probability, raises the same error.
 #' @param .data A data frame with one row per observation in `trimmed_ps`, in
 #'   the same order. If `NULL` (the default), the data are recovered from
 #'   `model`: its [model.frame()][stats::model.frame] when that already holds
@@ -2553,6 +2557,14 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'   [ps_calibrate()] is no longer calibrated and [is_ps_calibrated()] answers
 #'   `FALSE` for the result.
 #'
+#'   For a trimmed dose model, the retained values are the refit model's
+#'   conditional means, and the spread in the record is re-estimated from the
+#'   retained residuals under the recorded density family, unless the trim was
+#'   made at a `.sigma` the caller supplied, which is kept. The recorded
+#'   threshold describes the cut that was made and is left as it was, so the
+#'   refit model can place a retained unit's conditional density below it;
+#'   nothing is trimmed again.
+#'
 #' @seealso [ps_trim()] for the trimming step, [is_refit()] to check refit
 #'   status, [wt_ate()] and other weight functions for the next step in the
 #'   pipeline.
@@ -2597,6 +2609,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   # model that could never have produced the trimmed values is refused for that
   # rather than for whatever refitting it would run into.
   check_refit_model(meta, model)
+  density_record <- is_density_trim_record(meta)
 
   from_model <- is.null(.data)
   if (from_model) {
@@ -2632,10 +2645,15 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   # to work again would choose among rows it was never about. It is dropped
   # unless the caller names one, which is an instruction of its own.
   data_sub <- .data[meta$keep_idx, , drop = FALSE]
-  refit_model <- if ("subset" %in% ...names()) {
-    stats::update(model, data = data_sub, ...)
+  refit_call <- if ("subset" %in% ...names()) {
+    stats::update(model, data = data_sub, ..., evaluate = FALSE)
   } else {
-    stats::update(model, data = data_sub, subset = NULL, ...)
+    stats::update(model, data = data_sub, subset = NULL, ..., evaluate = FALSE)
+  }
+  refit_model <- eval(refit_call_function(refit_call, model))
+
+  if (density_record) {
+    return(refit_dose_trim(meta, refit_model, data_sub, n_obs))
   }
 
   # predict new PS for all rows
@@ -2701,7 +2719,7 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
 # reads a model that carries no family as a least squares fit, and a two-level
 # `multinom` carries none and does not answer to `model_fits_levels()` either.
 check_refit_model <- function(meta, model, call = rlang::caller_env()) {
-  density_record <- isTRUE(meta$method %in% c("density", "resid"))
+  density_record <- is_density_trim_record(meta)
 
   if (!density_record) {
     if (model_fits_levels(model)) {
@@ -2730,9 +2748,11 @@ check_refit_model <- function(meta, model, call = rlang::caller_env()) {
       c(
         dose_problem,
         x = "The trimming record holds a dose model's conditional means, and
-             {.arg model} fits a probability for each of its levels.",
+             {.arg model} is {.cls {class(model)[[1]]}}, a model of the
+             probabilities of a discrete exposure's levels.",
         i = "Refit with the model of the continuous exposure the trimming was
-             made from."
+             made from, such as one fit with {.fun gaussian}, {.fun lm},
+             {.fun mgcv::gam}, or {.fun MASS::rlm}."
       ),
       error_class = "propensity_model_family_error",
       call = call
@@ -2745,10 +2765,76 @@ check_refit_model <- function(meta, model, call = rlang::caller_env()) {
     problem = dose_problem,
     remedy = "The trimming record holds a dose model's conditional means, so
               refit with the model of the continuous exposure the trimming was
-              made from, fit with {.fun lm} or
-              {.code glm(family = gaussian())}.",
+              made from, such as one fit with {.fun gaussian}, {.fun lm},
+              {.fun mgcv::gam}, or {.fun MASS::rlm}.",
     call = call
   )
+}
+
+# Whether a trimming record was made by trimming a dose model, whose values are
+# conditional means read under a density family rather than propensity scores.
+is_density_trim_record <- function(meta) {
+  isTRUE(meta$method %in% ps_trim_dose_methods)
+}
+
+# A refit call names the fitting function the way the original fit recorded it.
+# `MASS::rlm()` records itself as a bare `rlm`, which cannot be found unless its
+# package is attached, so a bare name that does not resolve is qualified with
+# the namespace that defines the methods for the model's class.
+refit_call_function <- function(refit_call, model) {
+  # `predict()` is the generic looked up, because every model class a refit
+  # accepts has to answer it.
+  fn <- refit_call[[1]]
+  if (!is.symbol(fn) || exists(as.character(fn), mode = "function")) {
+    return(refit_call)
+  }
+
+  fn_name <- as.character(fn)
+  for (cls in class(model)) {
+    method <- utils::getS3method("predict", cls, optional = TRUE)
+    home <- if (is.function(method)) environment(method)
+    if (
+      isNamespace(home) &&
+        exists(fn_name, envir = home, mode = "function", inherits = FALSE)
+    ) {
+      refit_call[[1]] <- call("::", as.symbol(getNamespaceName(home)), fn)
+      return(refit_call)
+    }
+  }
+
+  refit_call
+}
+
+# The refit of a trimmed dose model. The retained values are the refit model's
+# conditional means, and the spread the density is read at is re-estimated from
+# the retained residuals under the recorded family, because the density ratio
+# takes the spread as an argument of its own. A spread the caller supplied is
+# theirs whatever the residuals would estimate, and is kept. The threshold
+# describes the cut that was made, so it is left as recorded even where the
+# refit model puts a retained unit's density below it.
+refit_dose_trim <- function(meta, refit_model, data_sub, n_obs) {
+  keep_idx <- meta$keep_idx
+  new_mu <- rep(NA_real_, n_obs)
+  new_mu[keep_idx] <- stats::predict(
+    refit_model,
+    newdata = data_sub,
+    type = "response"
+  )
+
+  # The spread is read from the refit model's own residuals, which cover
+  # exactly the rows it analyzed. A `subset` or a covariate missing on a kept
+  # row leaves fewer of those than there are kept rows.
+  if (!identical(meta$sigma_kind, "supplied")) {
+    residuals <- as.numeric(stats::residuals(refit_model, type = "response"))
+    meta$sigma <- density_scale_estimate(
+      residuals[!is.na(residuals)],
+      meta$density
+    )
+  }
+
+  meta$refit <- TRUE
+
+  new_trimmed_ps(x = new_mu, ps_trim_meta = meta)
 }
 
 # The variables the refit call reads: the ones the formula names, plus any named

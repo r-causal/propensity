@@ -74,13 +74,17 @@ combined the way any other disagreeing records are.
 \code{"pooled"} for the pooled residual root mean square, \code{"mle"} for a scale
 estimated under the family that reads it, which \code{\link[=dens_t]{dens_t()}} and
 \code{\link[=dens_laplace]{dens_laplace()}} take with \code{sigma_method = "mle"}, and \code{"supplied"} for a
-\code{.sigma} the caller gave.
-\item \code{sigma_value}, the single spread the caller supplied, and \code{NULL} for a
-spread estimated from the residuals, by either estimator, and for one
-supplied per observation. A spread that is one
-number is a constant the weights can be rebuilt from, which is what
-\code{\link[=ipw]{ipw()}} needs of it; a spread that changes with the observation is not,
-so the record holds where it came from and nothing more.
+\code{.sigma} the caller gave. Weights built from a dose model trimmed with
+\code{\link[=ps_trim]{ps_trim()}} record where the trim's spread came from.
+\item \code{sigma_value}, the single spread the weights were read at when it was not
+estimated by the weight function itself: one the caller supplied, or the
+spread a dose model trimmed with \code{\link[=ps_trim]{ps_trim()}} holds in its record, which is
+recorded whatever its source. It is \code{NULL} for a spread estimated from the
+residuals, by either estimator, and for one supplied per observation. A
+spread that is one number is a constant the weights can be rebuilt from,
+which is what \code{\link[=ipw]{ipw()}} needs of it; a spread that changes with the
+observation is not, so the record holds where it came from and nothing
+more.
 }
 
 Weights that carry a density record print it under their values, as the

@@ -18,7 +18,11 @@ The model is refit via \link[stats:update]{update()} on the retained subset.
 Trimmed propensity scores are refit only by a model of the probability of
 the exposure; a model of a conditional mean, such as a \code{\link[stats:lm]{stats::lm()}} fit
 or a gaussian \code{\link[stats:glm]{stats::glm()}}, never produced them and raises an error of
-class \code{propensity_model_family_error}.}
+class \code{propensity_model_family_error}. A dose model trimmed with
+\code{method = "density"} or \code{method = "resid"} is refit only by a model of
+the dose's conditional mean, such as a gaussian \code{\link[stats:glm]{stats::glm()}},
+\code{\link[stats:lm]{stats::lm()}}, \code{\link[mgcv:gam]{mgcv::gam()}}, or \code{\link[MASS:rlm]{MASS::rlm()}} fit, and any other model,
+such as one of a probability, raises the same error.}
 
 \item{.data}{A data frame with one row per observation in \code{trimmed_ps}, in
 the same order. If \code{NULL} (the default), the data are recovered from
@@ -41,6 +45,14 @@ confirm refitting was applied. Refitting replaces the values a calibrated
 score held with predictions from the refit model, so a score trimmed after
 \code{\link[=ps_calibrate]{ps_calibrate()}} is no longer calibrated and \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} answers
 \code{FALSE} for the result.
+
+For a trimmed dose model, the retained values are the refit model's
+conditional means, and the spread in the record is re-estimated from the
+retained residuals under the recorded density family, unless the trim was
+made at a \code{.sigma} the caller supplied, which is kept. The recorded
+threshold describes the cut that was made and is left as it was, so the
+refit model can place a retained unit's conditional density below it;
+nothing is trimmed again.
 }
 \description{
 Re-estimates a propensity score model using only the observations retained

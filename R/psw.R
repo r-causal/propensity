@@ -338,13 +338,17 @@ stabilization_score <- function(wt) {
 #'   `"pooled"` for the pooled residual root mean square, `"mle"` for a scale
 #'   estimated under the family that reads it, which [dens_t()] and
 #'   [dens_laplace()] take with `sigma_method = "mle"`, and `"supplied"` for a
-#'   `.sigma` the caller gave.
-#' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
-#'   spread estimated from the residuals, by either estimator, and for one
-#'   supplied per observation. A spread that is one
-#'   number is a constant the weights can be rebuilt from, which is what
-#'   [ipw()] needs of it; a spread that changes with the observation is not,
-#'   so the record holds where it came from and nothing more.
+#'   `.sigma` the caller gave. Weights built from a dose model trimmed with
+#'   [ps_trim()] record where the trim's spread came from.
+#' * `sigma_value`, the single spread the weights were read at when it was not
+#'   estimated by the weight function itself: one the caller supplied, or the
+#'   spread a dose model trimmed with [ps_trim()] holds in its record, which is
+#'   recorded whatever its source. It is `NULL` for a spread estimated from the
+#'   residuals, by either estimator, and for one supplied per observation. A
+#'   spread that is one number is a constant the weights can be rebuilt from,
+#'   which is what [ipw()] needs of it; a spread that changes with the
+#'   observation is not, so the record holds where it came from and nothing
+#'   more.
 #'
 #' Weights that carry a density record print it under their values, as the
 #' lines `format()` renders: the density family, the numerator, and the spread,
