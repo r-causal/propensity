@@ -164,6 +164,11 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* `ps_refit()` on truncated scores, a vector or a matrix, now raises an error
+  of class `propensity_method_error` that explains why: truncation keeps every
+  unit, so a refit would reproduce the original model, and the model should be
+  refit before truncating. It previously raised a generic class error.
+
 * `as.data.frame()` and `tibble::as_tibble()` of a trimmed or truncated
   categorical score matrix now return columns of class `ps_trim` or
   `ps_trunc` that carry the matrix's record. They previously returned plain

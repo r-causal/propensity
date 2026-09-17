@@ -2669,6 +2669,29 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
   diff(vec_data(x), lag = lag, differences = differences, ...)
 }
 
+# Truncation keeps every unit, so the retained sample a refit reads is the whole
+# sample: refitting would reproduce the original model and hand back the scores
+# before they were bounded. A class check would say only that the object is not
+# a trim, which is not what the caller needs to know.
+check_refit_not_truncated <- function(x, call = rlang::caller_env()) {
+  if (!inherits(x, "ps_trunc")) {
+    return(invisible(x))
+  }
+
+  abort(
+    c(
+      "{.fn ps_refit} cannot refit truncated propensity scores.",
+      x = "Truncation bounds the scores and keeps every unit, so a refit on the
+           kept units is the original model, and it would return the scores
+           before they were bounded.",
+      i = "To refit the model, refit it before truncating, then call
+           {.fn ps_trunc} on the refit model's scores."
+    ),
+    error_class = "propensity_method_error",
+    call = call
+  )
+}
+
 #' Refit a Propensity Score Model on Retained Observations
 #'
 #' @description
@@ -2687,7 +2710,10 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' @param trimmed_ps A `ps_trim` object returned by [ps_trim()]. Refitting reads
 #'   the retained positions out of the trimming record, so an object whose
 #'   record was dropped or no longer covers it raises an error of class
-#'   `propensity_missing_meta_error`; see [ps_trim()].
+#'   `propensity_missing_meta_error`; see [ps_trim()]. Truncated scores from
+#'   [ps_trunc()] keep every unit, so refitting them would return the original
+#'   model's scores, and they raise an error of class
+#'   `propensity_method_error`.
 #' @param model The original fitted model used to estimate the propensity
 #'   scores (e.g. a [glm][stats::glm] or [multinom][nnet::multinom] object).
 #'   The model is refit via [update()][stats::update] on the retained subset.
@@ -2791,6 +2817,7 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'
 #' @export
 ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
+  check_refit_not_truncated(trimmed_ps)
   assert_class(trimmed_ps, "ps_trim")
   meta <- ps_trim_meta(trimmed_ps)
 
