@@ -1377,9 +1377,10 @@
 #' weights with the pooled default or with one number to use `ipw()`.
 #'
 #' It bears on a `stabilization_score` in the same way. A score written per
-#' observation is one value per unit, so it does not survive the rows being
-#' restricted: subsetting the weights drops it, and a model frame that drops
-#' incomplete rows leaves it at the length the weights were built at. Either way
+#' observation is one value per unit. Subsetting or reordering the weights with
+#' `[` carries it along, but a slice that cannot place it, such as
+#' `vctrs::vec_slice()` or `dplyr::arrange()`, drops it, and a model frame that
+#' drops incomplete rows leaves it at the length the weights were built at. Either way
 #' the record still names a score as the numerator and the score in hand no
 #' longer describes the observations being weighted, so `ipw()` refuses before
 #' anything is solved, with an error of class

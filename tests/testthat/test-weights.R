@@ -421,23 +421,18 @@ count_score_warnings <- function(expr) {
   list(value = value, count = count)
 }
 
-test_that("vector stabilization_score is dropped with a warning when `[` shortens a psw", {
+test_that("vector stabilization_score is subset with the weights when `[` shortens a psw", {
   score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
   w <- stabilized_psw(score)
   expect_equal(stabilization_score(w), score)
 
-  cnd <- expect_warning(
-    w_sub <- w[1:3],
-    class = "propensity_stabilization_score_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  w_sub <- expect_silent(w[1:3])
 
   expect_s3_class(w_sub, "psw")
   expect_length(w_sub, 3)
-  expect_null(stabilization_score(w_sub))
-  expect_null(attr(w_sub, "stabilization_score"))
+  expect_equal(stabilization_score(w_sub), score[1:3])
 
-  # Every other piece of metadata is unaffected by the drop.
+  # Every other piece of metadata is unaffected.
   expect_equal(estimand(w_sub), "ate")
   expect_true(is_stabilized(w_sub))
   expect_equal(vec_data(w_sub), vec_data(w)[1:3])

@@ -3103,9 +3103,9 @@ continuous_seed_fits <- function(
 # A numerator the caller fixed rather than one anything estimates, which is the
 # third thing a set of continuous weights can be stabilized on. The score is the
 # single value that scales every weight rather than one value per observation:
-# an outcome model that drops a row subsets the weights, and a per-observation
-# score is dropped when it does, so only a scalar reaches `ipw()` intact from a
-# frame with a gap in it.
+# the model frame of an outcome model that drops a row leaves a per-observation
+# score at the length the weights were built at, so only a scalar reaches
+# `ipw()` intact from a frame with a gap in it.
 continuous_seed_score <- 0.4
 
 # `sim_continuous_numerator_gap()` drops a single row, and the exposure moments
@@ -3411,12 +3411,11 @@ test_that("a gam numerator model is seeded at its own residual moment", {
 
 # ---- weights whose per-observation stabilization score was dropped ----------
 #
-# A `stabilization_score` the caller wrote per observation is one value per unit,
-# so an operation that changes the length of the weights cannot re-index it and
-# drops it. That drop is reported where it happens: a marginal structural model
-# fit over a frame with a gap in it subsets the weights while it builds its own
-# model frame, and the weights that come back out of that frame carry no score
-# aligned with them.
+# A `stabilization_score` the caller wrote per observation is one value per unit.
+# `[` re-indexes it with the weights, a slice that cannot place it drops it with
+# a warning, and a marginal structural model fit over a frame with a gap in it
+# builds a model frame whose weights come back shorter than the score they
+# still carry, so none of the score is aligned with them.
 #
 # What the record still says is that a score is what stabilized them, because
 # the density record describes how the weights were built rather than what
@@ -3438,15 +3437,14 @@ test_that("ipw() refuses weights whose per-observation score was dropped", {
   dat <- sim_continuous_seed_gap()
   kept <- !is.na(dat$w)
 
-  # The drop happens where the marginal structural model subsets the weights,
-  # and is asserted here so that the only condition left for the call below is
-  # the one being pinned.
-  expect_warning(
+  # The fit itself is silent: whatever it subsets with `[` keeps the score
+  # aligned, and the model frame leaves it stale without passing through a
+  # restore. Asserting that here leaves the refusal below as the only condition.
+  expect_no_warning(
     fits <- continuous_seed_fits(
       dat,
       stab_score = continuous_seed_score_vector(dat)
-    ),
-    class = "propensity_stabilization_score_warning"
+    )
   )
 
   # What this block pins is the refusal itself. Whether anything is raised on
@@ -3466,12 +3464,11 @@ test_that("weights whose per-observation score was dropped raise nothing raw", {
   dat <- sim_continuous_seed_gap()
   kept <- !is.na(dat$w)
 
-  expect_warning(
+  expect_no_warning(
     fits <- continuous_seed_fits(
       dat,
       stab_score = continuous_seed_score_vector(dat)
-    ),
-    class = "propensity_stabilization_score_warning"
+    )
   )
 
   # The refusal has to come before the ratio is built. A score of the length the
@@ -3498,9 +3495,10 @@ test_that("ipw() refuses weights whose score the subset dropped outright", {
   kept <- !is.na(dat$w)
   sub <- dat[kept, ]
 
-  # The second shape the same drop arrives in. Restricting the rows by hand
-  # subsets the weights rather than shortening them behind their record, so the
-  # score is gone rather than stale, and the record still names it. Nothing
+  # The second shape the same drop arrives in. Restricting the rows with a
+  # slice that cannot place the score, rather than shortening the weights behind
+  # their record, leaves the score gone rather than stale, and the record still
+  # names it. Nothing
   # recycles here and nothing raw is raised, so what a caller who wrote this
   # would otherwise be told is that the weights disagree with the models they
   # were built from, which is not what happened.
@@ -3511,8 +3509,13 @@ test_that("ipw() refuses weights whose score the subset dropped outright", {
     stabilize = TRUE,
     stab_score = continuous_seed_score_vector(dat)
   )
+  # `[` places the score with the weights, so only a slice drops it.
+  expect_identical(
+    stabilization_score(wts[kept]),
+    continuous_seed_score_vector(dat)[kept]
+  )
   expect_warning(
-    wts_kept <- wts[kept],
+    wts_kept <- vctrs::vec_slice(wts, kept),
     class = "propensity_stabilization_score_warning"
   )
   expect_null(stabilization_score(wts_kept))

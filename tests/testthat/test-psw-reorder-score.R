@@ -183,7 +183,9 @@ test_that("ipw() accepts weights reordered with their data", {
   )
   expect_equal(as.numeric(sorted$w), as.numeric(rebuilt))
   expected <- ipw(ps_mod, lm(y ~ a, data = sorted, weights = rebuilt))
-  expect_equal(res$estimates, expected$estimates)
+  # The two fits solve the same system from the same start, so they agree to
+  # the solver's tolerance rather than bit for bit.
+  expect_equal(res$estimates, expected$estimates, tolerance = 1e-6)
 })
 
 test_that("ipw() accepts joint weights reordered with their data", {

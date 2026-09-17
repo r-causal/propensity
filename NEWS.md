@@ -164,6 +164,17 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* A per-observation `stabilization_score`, on a `psw` or inside the record of a
+  `wt_joint()` product, now follows the weights through `[`, so `rev()`,
+  `sort()`, and a data frame reordered with `order()` keep each unit's score
+  with its weight, and a shorter subset keeps the scores of the units it
+  holds. The score previously kept its old order whenever the length was
+  unchanged, so `ipw()` refused weights reordered with their data with a
+  misleading `propensity_ipw_weights_mismatch_error`, and a shorter subset
+  dropped the score. A slice that is not handed its subscript, such as
+  `vctrs::vec_slice()` or `dplyr::arrange()`, now drops the score with a
+  `propensity_stabilization_score_warning` at any length.
+
 * A `ps_trim` or `ps_trunc` vector sliced without its subscript now drops the
   positions in its record at any length, keeping the method and bounds.
   `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` previously returned the

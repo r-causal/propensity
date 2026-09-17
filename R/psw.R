@@ -144,9 +144,14 @@
 #' a slice does and cannot be told apart from one, so it drops the positions,
 #' and so do the helpers built on it or on a combine, such as
 #' `tidyr::replace_na()`, `dplyr::coalesce()`, `dplyr::if_else()`, and
-#' `dplyr::case_when()`. A `stabilization_score` with more than one value is
-#' carried when the result comes back at the length it was recorded on and
-#' dropped when it does not.
+#' `dplyr::case_when()`.
+#'
+#' A `stabilization_score` with more than one value, on the weights or on a
+#' component of a [wt_joint()] product, is in the order of the units too. `[`
+#' subsets it with the weights, elementwise arithmetic keeps it, and any other
+#' route through vctrs that brings back observations drops it with a warning of
+#' class `propensity_stabilization_score_warning`, since the score may no longer
+#' line up with the weights.
 #'
 #' Dropping the `stabilization_score` warns, because the score was supplied by
 #' the user and the weights can be recomputed on the subset. Dropping a
@@ -1217,9 +1222,9 @@ check_estimand_type <- function(estimand, call = rlang::caller_env()) {
 }
 
 # A stabilization score of length > 1 is indexed by observation, so it is only
-# meaningful at the length it was recorded on. Nothing rebuilding a psw is given
-# the indices behind a length change, and the subscript method for this class is
-# owned upstream, so per-observation metadata cannot be re-indexed here.
+# meaningful at the length it was recorded on. This checks a score against the
+# observations it is supplied for; `place_stabilization_score()` decides what an
+# operation on the weights does with one.
 #
 # Zero-length data is exempt. A prototype or empty subset carries no
 # observations, so a score on it lines up with nothing and misleads no one, and
@@ -1227,6 +1232,31 @@ check_estimand_type <- function(estimand, call = rlang::caller_env()) {
 # against the length that observations actually arrive at.
 stabilization_score_aligns <- function(score, n) {
   n == 0 || length(score) <= 1 || length(score) == n
+}
+
+# The score a result holds once data has arrived at `n` observations. A scalar
+# scales every weight and holds anywhere. A per-observation score is in the
+# order of the units, so it follows the rules a position record follows: `[`
+# hands over `i`, the positions among the `n_obs` units of the source the result
+# is built from, and the score is subset with them when it covers the source;
+# otherwise it is kept only where the caller vouches that every unit is still at
+# its place (`in_place`), or where the data holds no observations at all.
+place_stabilization_score <- function(
+  score,
+  n,
+  in_place = FALSE,
+  i = NULL,
+  n_obs = NULL
+) {
+  if (length(score) <= 1) {
+    return(score)
+  }
+
+  if (!is.null(i)) {
+    return(if (length(score) == n_obs) score[i])
+  }
+
+  if (n == 0 || (in_place && length(score) == n)) score
 }
 
 # The score a caller supplies, checked where it is recorded. It multiplies the
@@ -1424,23 +1454,33 @@ reindex_psw_records <- function(attrs, x, i) {
 # exception a stabilization score is: it holds a value per observation, and a
 # score that no longer describes the observations the result holds is reported
 # as absent, for the reason the score on the weights themselves is.
-aligned_joint_wt_meta <- function(meta, n) {
+aligned_joint_wt_meta <- function(
+  meta,
+  n,
+  in_place = FALSE,
+  i = NULL,
+  n_obs = NULL
+) {
   if (is.null(meta) || is.null(meta$stabilization_score)) {
     return(meta)
   }
 
-  aligned <- vapply(
-    meta$stabilization_score,
-    stabilization_score_aligns,
-    logical(1),
-    n = n
+  scores <- meta$stabilization_score
+  placed <- lapply(
+    scores,
+    place_stabilization_score,
+    n = n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
   )
+  meta$stabilization_score[] <- placed
 
+  aligned <- lengths(scores) == 0 | lengths(placed) > 0
   if (all(aligned)) {
     return(meta)
   }
 
-  meta$stabilization_score[!aligned] <- list(NULL)
   # The emptied slot is the slot a component the caller never stabilized on a
   # score has, so the drop is recorded rather than left to be read off an
   # absence. A component whose score is gone was stabilized on a numerator
@@ -1530,9 +1570,14 @@ aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
   attrs <- lapply(psw_carried_attrs, function(attribute) attr(to, attribute))
   names(attrs) <- psw_carried_attrs
 
-  if (!stabilization_score_aligns(attrs$stabilization_score, n)) {
-    attrs["stabilization_score"] <- list(NULL)
-  }
+  n_obs <- length(to)
+  attrs["stabilization_score"] <- list(place_stabilization_score(
+    attrs$stabilization_score,
+    n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
+  ))
 
   if (!is.null(i)) {
     attrs <- reindex_psw_records(attrs, to, i)
@@ -1540,9 +1585,13 @@ aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
     attrs <- drop_psw_record_positions(attrs)
   }
 
-  attrs[psw_joint_attr] <- list(
-    aligned_joint_wt_meta(attrs[[psw_joint_attr]], n)
-  )
+  attrs[psw_joint_attr] <- list(aligned_joint_wt_meta(
+    attrs[[psw_joint_attr]],
+    n,
+    in_place = in_place,
+    i = i,
+    n_obs = n_obs
+  ))
 
   # The record of what a fold has already dropped belongs to the prototype being
   # folded and goes no further. Data arriving at observations is the result the
@@ -1866,57 +1915,113 @@ restore_psw <- function(x, to, in_place = FALSE) {
   # than the incoming data. Outside vctrs' subassignment intermediates, where
   # the restore that follows reattaches the target's score anyway, a cast's `to`
   # is a prototype, which cannot carry a score misaligned with itself.
-  scores <- psw_stabilization_scores(to)
-  dropped <- !vapply(
-    scores,
-    stabilization_score_aligns,
-    logical(1),
-    n = length(x)
-  )
-  if (any(dropped)) {
-    lengths <- unique(lengths(scores[dropped]))
-    warn(
-      c(
-        "Dropping the per-observation {.arg stabilization_score}.",
-        i = "A score of length {lengths} cannot be carried through an
-             operation that changes the length of the weights to
-             {length(x)}.",
-        i = "The result is still marked as stabilized. Recompute the weights
-             on the subset if you need a score aligned with them."
-      ),
-      warning_class = "propensity_stabilization_score_warning",
-      # Restore is reached through vctrs' internal dispatch, whose call would
-      # be reported here and names nothing the caller wrote.
-      call = NULL
-    )
-  }
+  warn_dropped_scores(to, length(x), in_place = in_place)
 
   carry_psw_metadata(x, to, in_place = in_place)
 }
 
+# The per-observation scores on `to` that an operation bringing data at `n`
+# observations drops, announced once for the operation. A score kept, placed
+# by a subscript, or held as a scalar is not mentioned.
+warn_dropped_scores <- function(to, n, in_place = FALSE, i = NULL) {
+  scores <- psw_stabilization_scores(to)
+  dropped <- vapply(
+    scores,
+    function(score) {
+      length(score) > 1 &&
+        is.null(place_stabilization_score(
+          score,
+          n,
+          in_place = in_place,
+          i = i,
+          n_obs = length(to)
+        ))
+    },
+    logical(1)
+  )
+  if (!any(dropped)) {
+    return(invisible())
+  }
+
+  lengths <- unique(lengths(scores[dropped]))
+  problem <- if (all(lengths == n)) {
+    "A score cannot be carried through an operation that may reorder the
+     weights without saying how, such as {.fn vctrs::vec_slice} or
+     {.fn dplyr::arrange}."
+  } else {
+    "A score of length {lengths} cannot be carried through an operation that
+     changes the length of the weights to {n}."
+  }
+
+  warn(
+    c(
+      "Dropping the per-observation {.arg stabilization_score}.",
+      i = problem,
+      i = "The result is still marked as stabilized. Subset with {.code [},
+           which reorders the score with the weights, or recompute the weights
+           on the result if you need a score aligned with them."
+    ),
+    warning_class = "propensity_stabilization_score_warning",
+    # Restore is reached through vctrs' internal dispatch, whose call would
+    # be reported here and names nothing the caller wrote.
+    call = NULL
+  )
+}
+
+# The weights with every per-observation score removed, so that a slice built
+# from them has no score for its restore to drop and announce.
+without_observation_scores <- function(x) {
+  if (length(attr(x, "stabilization_score")) > 1) {
+    attr(x, "stabilization_score") <- NULL
+  }
+
+  meta <- attr(x, psw_joint_attr)
+  if (any(lengths(meta$stabilization_score) > 1)) {
+    meta$stabilization_score[lengths(meta$stabilization_score) > 1] <- list(
+      NULL
+    )
+    attr(x, psw_joint_attr) <- meta
+  }
+
+  x
+}
+
 # `[` is the one slice that knows its subscript, so it carries the position
-# records through it rather than leaving the restore behind `NextMethod()` to
-# drop them. An empty result is left as that restore builds it, since a
-# prototype keeps the records it was sliced with, and so are weights with no
-# position record to carry.
+# records and the per-observation scores through it rather than leaving the
+# restore behind `NextMethod()` to drop them. `x[]` takes every unit where it
+# is. The slice itself is taken from weights without their per-observation
+# scores, so its restore has nothing to drop and announce; the result is then
+# rebuilt from the weights as given. An empty result is built as a restore
+# builds it, since a prototype keeps what it was sliced with.
 #' @export
 `[.psw` <- function(x, i, ...) {
+  if (missing(i)) {
+    return(x)
+  }
+
+  source <- x
+  has_scores <- any(lengths(psw_stabilization_scores(x)) > 1)
+  if (has_scores) {
+    x <- without_observation_scores(x)
+  }
+
   out <- NextMethod()
-  if (
-    !inherits(out, "psw") ||
-      length(out) == 0 ||
-      !any(psw_modification_meta %in% names(attributes(x)))
-  ) {
+  if (!inherits(out, "psw")) {
     return(out)
   }
 
-  i <- if (missing(i)) {
-    seq_along(x)
-  } else {
-    vec_as_location(i, n = length(x), names = names(x))
+  has_records <- any(psw_modification_meta %in% names(attributes(source)))
+  if (!has_records && !has_scores) {
+    return(out)
   }
 
-  carry_psw_metadata(vec_data(out), x, i = i)
+  if (length(out) == 0) {
+    return(carry_psw_metadata(vec_data(out), source))
+  }
+
+  loc <- vec_as_location(i, n = length(source), names = names(source))
+  warn_dropped_scores(source, length(loc), i = loc)
+  carry_psw_metadata(vec_data(out), source, i = loc)
 }
 
 # Marking weights as missing moves no unit, so it goes through base `[<-`, which
@@ -2064,11 +2169,14 @@ cast_to_psw <- function(x, to) {
   x <- vec_cast(vec_data(x), to = double())
   attributes(x) <- NULL
 
-  # `to`'s records describe `to`'s units, not the data being cast, so their
-  # positions are dropped whatever the length. Subassignment casts the
-  # replacement too, but base `[<-` then keeps the target's own attributes, so
-  # the records the cast carries never reach its result.
-  carry_psw_metadata(x, to)
+  # A full-length `to` describes its own units, not the data being cast, so its
+  # position records and per-observation scores are dropped whatever the
+  # length. Subassignment casts the replacement too, but base `[<-` then keeps
+  # the target's own attributes, so what the cast carries never reaches its
+  # result. A prototype holds no units; a score it carries is kept for data of
+  # the score's length, as the restore that follows expects, while its
+  # positions, which name units of their own, are dropped.
+  carry_psw_metadata(x, to, in_place = length(to) == 0)
 }
 
 # A cast returns `x`'s values in `to`'s type, and a psw's type is the whole

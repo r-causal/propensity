@@ -932,7 +932,7 @@ test_that("a zero-length psw restore keeps the trimming record silently", {
   expect_identical(is_unit_trimmed(proto), logical(0))
 })
 
-test_that("shortening a psw with a score and a trimming record warns only for the score", {
+test_that("slicing a psw with a score and a trimming record warns only for the score", {
   score <- c(0.51, 0.52, 0.53, 0.54, 0.55)
   w <- trimmed_psw(stabilization_score = score)
   expect_identical(stabilization_score(w), score)
@@ -949,9 +949,10 @@ test_that("shortening a psw with a score and a trimming record warns only for th
   expect_true(is_stabilized(out$value))
   expect_true(is_ps_trimmed(out$value))
 
+  # `[` places both, so it has nothing to announce.
   out <- collect_warning_classes(w[1:2])
-  expect_identical(out$classes, "propensity_stabilization_score_warning")
-  expect_null(stabilization_score(out$value))
+  expect_identical(out$classes, character())
+  expect_identical(stabilization_score(out$value), score[1:2])
   expect_identical(is_unit_trimmed(out$value), c(TRUE, FALSE))
   expect_true(is_stabilized(out$value))
 })

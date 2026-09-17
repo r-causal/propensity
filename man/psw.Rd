@@ -229,9 +229,14 @@ whole. vctrs' own assignment, \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}
 a slice does and cannot be told apart from one, so it drops the positions,
 and so do the helpers built on it or on a combine, such as
 \code{tidyr::replace_na()}, \code{dplyr::coalesce()}, \code{dplyr::if_else()}, and
-\code{dplyr::case_when()}. A \code{stabilization_score} with more than one value is
-carried when the result comes back at the length it was recorded on and
-dropped when it does not.
+\code{dplyr::case_when()}.
+
+A \code{stabilization_score} with more than one value, on the weights or on a
+component of a \code{\link[=wt_joint]{wt_joint()}} product, is in the order of the units too. \code{[}
+subsets it with the weights, elementwise arithmetic keeps it, and any other
+route through vctrs that brings back observations drops it with a warning of
+class \code{propensity_stabilization_score_warning}, since the score may no longer
+line up with the weights.
 
 Dropping the \code{stabilization_score} warns, because the score was supplied by
 the user and the weights can be recomputed on the subset. Dropping a
