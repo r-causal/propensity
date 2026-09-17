@@ -191,9 +191,9 @@ Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only
 metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector. The trimming, truncation, and weight truncation
 records are compared by what they say about the modification: weights built
-from scores trimmed or truncated differently, from a refit and an unrefit
-trim, or truncated at different bounds describe different estimands and are
-combined only as numbers. Weights flagged as modified with no record agree
+from scores trimmed or truncated differently, from a trim that was refit
+and one that was not, or truncated at different bounds describe different
+estimands and are combined only as numbers. Weights flagged as modified with no record agree
 with any record. Concatenation appends one set of observations to another, so
 the positions a record names would describe units from the other input; the
 result keeps each record without its positions, which \code{\link[=is_refit]{is_refit()}}, the

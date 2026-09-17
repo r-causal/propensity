@@ -133,7 +133,12 @@ test_that("subassignment and is.na<- keep the record, since no unit moves", {
     })
     expect_s3_class(x, class(fixture$scores)[[1]])
     expect_true(is.na(x[[3]]), info = label)
-    expect_identical(fixture$meta(x), meta, info = label)
+    # Unit 3 was retained and untruncated; a missing score is in neither set.
+    expected <- meta
+    if (!is.null(expected$keep_idx)) {
+      expected$keep_idx <- setdiff(expected$keep_idx, 3L)
+    }
+    expect_identical(fixture$meta(x), expected, info = label)
     expect_identical(fixture$query(x), units, info = label)
   }
 })

@@ -169,14 +169,16 @@ test_that("vec_cast from ps_trunc carries every metadata field of the psw protot
   expect_equal(stabilization_score(out), 0.42)
 })
 
-test_that("vec_cast keeps a per-observation stabilization score at a matching length", {
+test_that("vec_cast drops a prototype's per-observation score even at a matching length", {
+  # The score describes the units of the weights it was recorded on, not the
+  # data being cast.
   score <- c(0.51, 0.52, 0.53)
   to <- psw_cast_prototype(stabilization_score = score)
 
   out <- expect_no_warning(vec_cast(c(1, 2, 3), to = to))
 
   expect_s3_class(out, "psw")
-  expect_equal(stabilization_score(out), score)
+  expect_null(stabilization_score(out))
   expect_true(is_stabilized(out))
 })
 
@@ -1928,7 +1930,8 @@ test_that("an integer and a double stabilization score are the same score", {
 test_that("a psw prototype records a score for observations it does not hold", {
   # A zero-length psw carries metadata for observations that have not arrived,
   # so there is no length for a per-observation score to be checked against.
-  # `vec_cast()` checks it against the length the data does arrive at.
+  # Data cast to it is not the data the score was recorded for, so the score is
+  # not carried onto it at any length.
   score <- c(0.51, 0.52, 0.53)
   proto <- expect_silent(psw(
     double(),
@@ -1938,7 +1941,7 @@ test_that("a psw prototype records a score for observations it does not hold", {
   ))
 
   expect_identical(stabilization_score(proto), score)
-  expect_identical(stabilization_score(vec_cast(c(1, 2, 3), to = proto)), score)
+  expect_null(stabilization_score(vec_cast(c(1, 2, 3), to = proto)))
   expect_null(stabilization_score(vec_cast(c(1, 2), to = proto)))
 
   # The value checks apply to a prototype like anything else.

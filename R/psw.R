@@ -106,9 +106,9 @@
 #' metadata matches; mismatched metadata produces a warning and falls back to a
 #' plain numeric vector. The trimming, truncation, and weight truncation
 #' records are compared by what they say about the modification: weights built
-#' from scores trimmed or truncated differently, from a refit and an unrefit
-#' trim, or truncated at different bounds describe different estimands and are
-#' combined only as numbers. Weights flagged as modified with no record agree
+#' from scores trimmed or truncated differently, from a trim that was refit
+#' and one that was not, or truncated at different bounds describe different
+#' estimands and are combined only as numbers. Weights flagged as modified with no record agree
 #' with any record. Concatenation appends one set of observations to another, so
 #' the positions a record names would describe units from the other input; the
 #' result keeps each record without its positions, which [is_refit()], the
@@ -2204,14 +2204,12 @@ cast_to_psw <- function(x, to) {
   x <- vec_cast(vec_data(x), to = double())
   attributes(x) <- NULL
 
-  # A full-length `to` describes its own units, not the data being cast, so its
-  # position records and per-observation scores are dropped whatever the
-  # length. Subassignment casts the replacement too, but base `[<-` then keeps
-  # the target's own attributes, so what the cast carries never reaches its
-  # result. A prototype holds no units; a score it carries is kept for data of
-  # the score's length, as the restore that follows expects, while its
-  # positions, which name units of their own, are dropped.
-  carry_psw_metadata(x, to, in_place = length(to) == 0)
+  # `to` describes its own units, or none if it is a prototype, and not the
+  # data being cast, so its position records and per-observation scores are
+  # dropped for any data with observations. Subassignment casts the replacement
+  # too, but base `[<-` then keeps the target's own attributes, so what the cast
+  # carries never reaches its result.
+  carry_psw_metadata(x, to)
 }
 
 # A cast returns `x`'s values in `to`'s type, and a psw's type is the whole
@@ -2234,11 +2232,37 @@ vec_cast.psw.psw <- function(x, to, ...) {
       to,
       x_arg = "",
       to_arg = "",
-      details = problem
+      details = cast_problem_details(problem, x, to)
     )
   }
 
   x
+}
+
+# A disagreement about the score is the one a caller meets most when assigning
+# weights into weights stabilized per observation, and the bare field name says
+# nothing about what to do. The score belongs to the units of each vector, so
+# the value's cannot be written under the target's.
+cast_problem_details <- function(problem, x, to) {
+  scores <- list(stabilization_score(x), stabilization_score(to))
+  if (
+    !identical(problem, psw_type_field_problems[["stabilization_score"]]) ||
+      !any(lengths(scores) > 1)
+  ) {
+    return(problem)
+  }
+
+  c(
+    problem,
+    i = paste(
+      "The value's per-observation `stabilization_score` does not match the",
+      "target's, and a score describes the units of the weights that carry it."
+    ),
+    i = paste(
+      "Assign `vec_data()` of the value to keep the target's score, or rebuild",
+      "the weights once the values are assigned."
+    )
+  )
 }
 
 #' @export

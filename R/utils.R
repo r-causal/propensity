@@ -294,6 +294,22 @@ merged_units_agree <- function(values, status) {
   vctrs::vec_unique_count(pairs) == attr(groups, "n")
 }
 
+# The units a modified score holds, one per element or, for a matrix, one per
+# row, and those of them with a missing score. A row with any missing score has
+# no complete probability vector, so the whole unit is missing.
+missing_unit_count <- function(x) {
+  if (is.matrix(x)) nrow(x) else length(x)
+}
+
+missing_units <- function(x) {
+  values <- score_values(x)
+  if (is.matrix(values)) {
+    which(rowSums(is.na(values)) > 0)
+  } else {
+    which(is.na(values))
+  }
+}
+
 # `[` knows the subscript, which is what re-indexing a record takes. Every
 # occurrence of a recorded position is mapped onto the position it now holds, so
 # a subscript naming a position twice reports that unit twice. `NA` names no

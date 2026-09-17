@@ -1861,10 +1861,22 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
 
 # Marking scores as missing moves no unit, so it goes through base `[<-`, which
 # keeps the record, rather than through vctrs' method, whose restore cannot tell
-# an assignment from a reordering and drops the positions.
+# an assignment from a reordering and drops the positions. A score that is now
+# missing was moved onto no bound, as a score that arrived missing was not, so
+# it leaves the truncated set.
 #' @export
 `is.na<-.ps_trunc` <- function(x, value) {
   x[value] <- NA_real_
+
+  meta <- ps_trunc_meta(x)
+  if (record_covers(meta, missing_unit_count(x))) {
+    missing <- missing_units(x)
+    meta$truncated_idx <- meta$truncated_idx[
+      !meta$truncated_idx %in% missing
+    ]
+    attr(x, "ps_trunc_meta") <- meta
+  }
+
   x
 }
 

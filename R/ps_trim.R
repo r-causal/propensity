@@ -2432,10 +2432,20 @@ median.ps_trim <- function(x, na.rm = FALSE, ...) {
 
 # Marking scores as missing moves no unit, so it goes through base `[<-`, which
 # keeps the record, rather than through vctrs' method, whose restore cannot tell
-# an assignment from a reordering and drops the positions.
+# an assignment from a reordering and drops the positions. A score that is now
+# missing was not retained, as a score that arrived missing is not, so it leaves
+# the retained set; a trimmed score is missing already and stays trimmed.
 #' @export
 `is.na<-.ps_trim` <- function(x, value) {
   x[value] <- NA_real_
+
+  meta <- ps_trim_meta(x)
+  if (record_covers(meta, missing_unit_count(x))) {
+    missing <- missing_units(x)
+    meta$keep_idx <- meta$keep_idx[!meta$keep_idx %in% missing]
+    attr(x, "ps_trim_meta") <- meta
+  }
+
   x
 }
 

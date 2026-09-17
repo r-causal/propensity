@@ -168,9 +168,10 @@
   the scores they were built from, including whether the trimmed model was
   refit, as well as the weight truncation bound, and keeps each record without
   its positions on the result. Weights trimmed at different cutoffs, or from a
-  refit and an unrefit trim, previously combined silently, and a combined result
-  lost its records entirely, so a later combine merged weights truncated at
-  different bounds without a warning and `is_refit()` refused the result.
+  trim that was refit and one that was not, previously combined silently, and
+  a combined result lost its records entirely, so a later combine merged
+  weights truncated at different bounds without a warning and `is_refit()`
+  refused the result.
   Such combines now warn with a `propensity_coercion_warning` and return a
   numeric vector, in one call or across nested ones, and `is_refit()` and the
   printed footer read a combined result's records.
@@ -197,7 +198,8 @@
   `propensity_missing_meta_error`. `vctrs::vec_assign()` and the helpers built
   on it drop the positions too. `[`, `sort()`, `unique()`, `rep()`, and `c()`
   of one input still re-index the record, and `[<-`, `x[]`, and `is.na<-` keep
-  it.
+  it; `is.na<-` moves a score it marks missing out of the retained or
+  truncated units, as for a score that arrived missing.
 
 * Reordering or subsetting a `psw` with `[` now carries its trimming,
   truncation, and weight truncation records through the subscript, as `[`
