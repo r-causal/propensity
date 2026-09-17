@@ -87,6 +87,14 @@ put to work a second time on rows it was never about. A \code{subset} passed
 through \code{...} is an instruction of its own and is honored.
 }
 
+\subsection{Which level a refit predicts}{
+
+For a vector of scores, the refit predicts the probability of the level the
+scores describe: when \code{\link[=ps_trim]{ps_trim()}} was given a model with its first level
+named as focal, the refit reports one minus the model's prediction, and for
+scores supplied directly it reports the level the model predicts by default.
+}
+
 \subsection{Arguments read from outside the formula}{
 
 \code{weights}, \code{offset}, and \code{na.action} in the original call are re-evaluated

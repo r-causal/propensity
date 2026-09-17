@@ -305,6 +305,16 @@
       x `trimmed_ps` holds one column per level, and `model` is <multinom>, which fits a single probability.
       i Refit with the model the scores were read from, such as a `nnet::multinom()` fit to all of the exposure's levels.
 
+# the record of an inverted trim follows the scores
+
+    Code
+      out <- vctrs::vec_c(inverted, as_given)
+    Condition <propensity_coercion_warning>
+      Warning in `vec_ptype2.ps_trim.ps_trim()`:
+      Converting ps_trim to numeric: different trimming parameters
+      i Metadata cannot be preserved when combining incompatible objects
+      i Use identical objects or explicitly cast to numeric to avoid this warning
+
 # ps_trim() names the class of a fit it has no reading for
 
     Code

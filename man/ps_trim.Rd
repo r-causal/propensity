@@ -176,6 +176,10 @@ with \code{\link[=ps_trim_meta]{ps_trim_meta()}}. Key fields include:
 \item Method-specific fields such as \code{cutoff} (adaptive), \code{q_lower}/\code{q_upper}
 (pctl), \code{cr_lower}/\code{cr_upper} (cr), \code{delta} (categorical ps),
 or \code{lambda} (optimal)
+\item \code{focal_inverted} (vector scores only): \code{TRUE} when the scores are one
+minus the probability a fitted model reports, because the model was
+trimmed with its first level named as focal, and \code{FALSE} otherwise,
+including for every vector of scores supplied directly
 }
 
 A trim of a dose model records \code{method}, \code{lower} (\code{"density"}, else

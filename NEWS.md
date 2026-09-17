@@ -19,6 +19,14 @@
   already evaluated vector. A logical or index vector still indexes the
   retained rows.
 
+* `ps_refit()` now keeps the focal level of a score trimmed from a fitted
+  model with its first level named as focal, through `.focal_level` or
+  `.reference_level`. Such scores are one minus the probability the model
+  reports, and the refit previously returned the model's own probability, the
+  other level's. The trim record gains a `focal_inverted` field that
+  `ps_refit()` reads, and combining an inverted trim with one that is not
+  inverted falls back to numeric with a warning.
+
 * New `wt_trunc()` bounds extreme weights on the scale of the weights
   themselves, so it applies to weights for any exposure type, including the
   density-ratio weights of a continuous exposure. It offers four methods:

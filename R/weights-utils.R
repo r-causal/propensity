@@ -2382,6 +2382,7 @@ prepare_model_ps <- function(
     exposure = .exposure,
     exposure_type = "binary",
     focal_level = focal_params$.focal_level,
-    reference_level = focal_params$.reference_level
+    reference_level = focal_params$.reference_level,
+    focal_inverted = invert
   )
 }

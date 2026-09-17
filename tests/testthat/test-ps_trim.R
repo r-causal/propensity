@@ -3319,6 +3319,61 @@ test_that("ps_refit() keeps a first-level focal level of a two-level multinomial
   )
 })
 
+test_that("a trim records whether its scores are the complement of the fit's", {
+  fit <- trim_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_false(ps_trim_meta(ps_trim(fit, method = "ps"))$focal_inverted)
+  expect_false(
+    ps_trim_meta(ps_trim(fit, method = "ps", .focal_level = 1))$focal_inverted
+  )
+  expect_true(
+    ps_trim_meta(ps_trim(fit, method = "ps", .focal_level = 0))$focal_inverted
+  )
+
+  # Supplied scores are taken as given, whichever level is named.
+  expect_false(
+    ps_trim_meta(ps_trim(
+      scores,
+      method = "pref",
+      .exposure = trim_model_data$z,
+      .focal_level = 0
+    ))$focal_inverted
+  )
+
+  # A matrix of scores and a trimmed dose model have no single level to invert.
+  expect_null(
+    ps_trim_meta(ps_trim(
+      fitted(trim_categorical_fit()),
+      method = "ps",
+      .exposure = trim_model_data$trt
+    ))$focal_inverted
+  )
+})
+
+test_that("the record of an inverted trim follows the scores", {
+  fit <- trim_binary_fit()
+  inverted <- ps_trim(
+    fit,
+    method = "ps",
+    lower = 0.25,
+    upper = 0.8,
+    .focal_level = 0
+  )
+  as_given <- ps_trim(fit, method = "ps", lower = 0.25, upper = 0.8)
+
+  expect_true(ps_trim_meta(inverted[1:10])$focal_inverted)
+  expect_true(ps_trim_meta(vctrs::vec_c(inverted, inverted))$focal_inverted)
+  refitted <- ps_refit(inverted, fit, .data = trim_model_data)
+  expect_true(ps_trim_meta(refitted)$focal_inverted)
+  weights <- wt_ate(refitted, .exposure = trim_model_data$z, .focal_level = 0)
+  expect_true(ps_trim_meta(weights)$focal_inverted)
+
+  # Scores of different levels are not scores of one trimming.
+  combined <- expect_propensity_warning(vctrs::vec_c(inverted, as_given))
+  expect_type(combined, "double")
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")
@@ -3364,10 +3419,9 @@ test_that("ps_trim() inverts a fit's scores for a named focal level", {
   fit <- trim_binary_fit()
   inverted <- 1 - predict(fit, type = "response")
 
-  expect_same_trim(
-    trim_pref(fit, .focal_level = 0),
-    trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
-  )
+  oracle <- trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
+  attr(oracle, "ps_trim_meta")$focal_inverted <- TRUE
+  expect_same_trim(trim_pref(fit, .focal_level = 0), oracle)
   expect_false(identical(
     ps_trim_meta(trim_pref(fit, .focal_level = 0))$keep_idx,
     ps_trim_meta(trim_pref(fit))$keep_idx
@@ -3380,14 +3434,13 @@ test_that("ps_trim() inverts a two-level multinomial fit for a named level", {
   fit <- trim_two_level_fit()
   inverted <- 1 - as.numeric(fitted(fit))
 
-  expect_same_trim(
-    trim_pref(fit, .focal_level = "control"),
-    trim_pref(
-      inverted,
-      .exposure = trim_model_data$a2,
-      .focal_level = "control"
-    )
+  oracle <- trim_pref(
+    inverted,
+    .exposure = trim_model_data$a2,
+    .focal_level = "control"
   )
+  attr(oracle, "ps_trim_meta")$focal_inverted <- TRUE
+  expect_same_trim(trim_pref(fit, .focal_level = "control"), oracle)
   expect_false(identical(
     ps_trim_meta(trim_pref(fit, .focal_level = "control"))$keep_idx,
     ps_trim_meta(trim_pref(fit))$keep_idx

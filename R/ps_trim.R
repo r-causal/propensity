@@ -313,6 +313,10 @@
 #'   * Method-specific fields such as `cutoff` (adaptive), `q_lower`/`q_upper`
 #'     (pctl), `cr_lower`/`cr_upper` (cr), `delta` (categorical ps),
 #'     or `lambda` (optimal)
+#'   * `focal_inverted` (vector scores only): `TRUE` when the scores are one
+#'     minus the probability a fitted model reports, because the model was
+#'     trimmed with its first level named as focal, and `FALSE` otherwise,
+#'     including for every vector of scores supplied directly
 #'
 #'   A trim of a dose model records `method`, `lower` (`"density"`, else
 #'   `NULL`), `upper` (`"resid"`, else `NULL`), `threshold` (the realized floor
@@ -438,6 +442,10 @@ ps_trim.default <- function(
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
+  # Whether `.propensity` is one minus the probability a fitted model reports,
+  # which the model route decides when the caller names the model's first
+  # level as focal. Supplied scores are taken as given.
+  focal_inverted = FALSE,
   # Two frames arrive here because two condition systems read them.
   # `user_env` is the frame lifecycle reports a deprecation from, which decides
   # whether the reader is told to change their own call or to report an issue.
@@ -573,6 +581,10 @@ ps_trim.default <- function(
   if (calibrated) {
     meta_list$calibrated <- TRUE
   }
+
+  # A refit predicts the probability the fitted model reports, and this says
+  # whether the retained scores are that probability or its complement.
+  meta_list$focal_inverted <- focal_inverted
 
   # A score that arrived missing is not one this function can place against a
   # cutoff, so it takes no part in working the cutoff out and no part in the
@@ -1235,6 +1247,7 @@ ps_trim_from_model <- function(
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
     ...,
+    focal_inverted = args$focal_inverted,
     user_env = user_env,
     call = call
   )
@@ -2072,7 +2085,9 @@ vec_arith.ps_trim.list <- function(op, x, y, ...) {
 # method, the bounds it was given, and the cutoffs it settled on. A cutoff is
 # read off the scores, so two objects that agree on the method and the bounds
 # can still have been trimmed at different places. A trim of a dose model is
-# also described by the spread and the density family it was read at.
+# also described by the spread and the density family it was read at, and a
+# vector of scores by whether they are the complement of what the model reports,
+# since scores for different levels are not scores of one trimming.
 trim_parameters <- function(meta) {
   fields <- c(
     "method",
@@ -2087,7 +2102,8 @@ trim_parameters <- function(meta) {
     "threshold",
     "sigma",
     "sigma_kind",
-    "density"
+    "density",
+    "focal_inverted"
   )
 
   params <- rlang::set_names(
@@ -2544,6 +2560,13 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' put to work a second time on rows it was never about. A `subset` passed
 #' through `...` is an instruction of its own and is honored.
 #'
+#' ## Which level a refit predicts
+#'
+#' For a vector of scores, the refit predicts the probability of the level the
+#' scores describe: when [ps_trim()] was given a model with its first level
+#' named as focal, the refit reports one minus the model's prediction, and for
+#' scores supplied directly it reports the level the model predicts by default.
+#'
 #' ## Arguments read from outside the formula
 #'
 #' `weights`, `offset`, and `na.action` in the original call are re-evaluated
@@ -2697,7 +2720,11 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   } else {
     # For vector propensity scores (binary exposures)
     new_ps <- rep(NA_real_, n_obs)
-    new_ps[meta$keep_idx] <- predict_binary_ps(refit_model, data_sub)
+    refit_ps <- predict_binary_ps(refit_model, data_sub)
+    if (isTRUE(meta$focal_inverted)) {
+      refit_ps <- 1 - refit_ps
+    }
+    new_ps[meta$keep_idx] <- refit_ps
   }
 
   meta$refit <- TRUE
@@ -3063,6 +3090,9 @@ is_refit.ps_trim <- function(x) {
 #'   \item{`n_obs`}{The number of observations those indices describe.}
 #'   \item{`lower`, `upper`}{Numeric cutoffs, when applicable.}
 #'   \item{`refit`}{Logical, `TRUE` if the model was refit via [ps_refit()].}
+#'   \item{`focal_inverted`}{For a vector of scores, logical, `TRUE` if the
+#'     scores are one minus the probability the fitted model reports, which
+#'     [ps_refit()] reads to predict the same level.}
 #' }
 #' Additional method-specific elements (e.g. `cutoff`, `delta`, `lambda`) may
 #' also be present.
