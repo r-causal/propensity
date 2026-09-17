@@ -1856,11 +1856,16 @@ restore_psw <- function(x, to, in_place = FALSE) {
 # `[` is the one slice that knows its subscript, so it carries the position
 # records through it rather than leaving the restore behind `NextMethod()` to
 # drop them. An empty result is left as that restore builds it, since a
-# prototype keeps the records it was sliced with.
+# prototype keeps the records it was sliced with, and so are weights with no
+# position record to carry.
 #' @export
 `[.psw` <- function(x, i, ...) {
   out <- NextMethod()
-  if (!inherits(out, "psw") || length(out) == 0) {
+  if (
+    !inherits(out, "psw") ||
+      length(out) == 0 ||
+      !any(psw_modification_meta %in% names(attributes(x)))
+  ) {
     return(out)
   }
 

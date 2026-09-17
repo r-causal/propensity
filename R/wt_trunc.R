@@ -144,7 +144,8 @@
 #' bound. What the bound bought was precision: a root mean squared error of
 #' 0.084 against 0.096, for a bias of 0.015 (3% of the effect) against 0.012.
 #' At an effective sample size of 53% it covered 0.847 against 0.839
-#' untruncated, and at 81% it changed nothing. A density trim at
+#' untruncated, and at 81% it changed almost nothing (it applied in 0.2% of
+#' replications, leaving coverage and RMSE unchanged). A density trim at
 #' `lower = 0.01` covered 0.843 at 64%, below the untruncated weights.
 #'
 #' With t(4) or Laplace residuals, or a residual spread that varied with a
@@ -356,14 +357,20 @@ abort_wt_trunc_dims <- function(.weights, call = rlang::caller_env()) {
 truncate_weights <- function(.weights, method, lower, upper, call) {
   # A psw holds doubles, and `vec_data()` keeps the names the weights carry.
   x <- vec_data(.weights)
-  present <- x[!is.na(x)]
 
+  # The adaptive bound reads only how many weights are present, so only the
+  # methods that read their values pay for collecting them.
   bounds <- switch(
     method,
-    adaptive = wt_trunc_adaptive_bounds(present, lower, upper, call = call),
+    adaptive = wt_trunc_adaptive_bounds(
+      sum(!is.na(x)),
+      lower,
+      upper,
+      call = call
+    ),
     wt = wt_trunc_wt_bounds(lower, upper, call = call),
-    pctl = wt_trunc_pctl_bounds(present, lower, upper, call = call),
-    count = wt_trunc_count_bounds(present, lower, upper, call = call)
+    pctl = wt_trunc_pctl_bounds(x[!is.na(x)], lower, upper, call = call),
+    count = wt_trunc_count_bounds(x[!is.na(x)], lower, upper, call = call)
   )
 
   # A missing weight compares as neither above nor below a bound, and `which()`
@@ -404,7 +411,7 @@ truncate_weights <- function(.weights, method, lower, upper, call) {
   out
 }
 
-wt_trunc_adaptive_bounds <- function(present, lower, upper, call) {
+wt_trunc_adaptive_bounds <- function(n_present, lower, upper, call) {
   if (!is.null(lower) || !is.null(upper)) {
     warn(
       c(
@@ -417,13 +424,13 @@ wt_trunc_adaptive_bounds <- function(present, lower, upper, call) {
     )
   }
 
-  check_wt_trunc_n_present(present, "adaptive", call = call)
+  check_wt_trunc_n_present(n_present, "adaptive", call = call)
 
   list(
     lower = NULL,
     upper = NULL,
     lower_value = NULL,
-    upper_value = adaptive_weight_bound(length(present))
+    upper_value = adaptive_weight_bound(n_present)
   )
 }
 
@@ -500,7 +507,7 @@ wt_trunc_pctl_bounds <- function(present, lower, upper, call) {
     )
   }
 
-  check_wt_trunc_n_present(present, "pctl", call = call)
+  check_wt_trunc_n_present(length(present), "pctl", call = call)
 
   # `quantile()` names its result for the probability, which says nothing
   # about the bound and would reappear wherever the bound is compared.
@@ -543,7 +550,10 @@ wt_trunc_count_bounds <- function(present, lower, upper, call) {
     )
   }
 
-  sorted <- sort(present)
+  # Only the order statistics at the two bounds are read, and a partial sort
+  # places exactly those, ties included, where a full sort would.
+  at <- c(if (!is.null(lower)) lower + 1, n - upper)
+  sorted <- sort(present, partial = at)
   lower_value <- NULL
   if (!is.null(lower)) {
     lower_value <- sorted[[lower + 1]]
@@ -632,8 +642,7 @@ wt_trunc_bound_arg <- function(value, arg, method, call) {
   as.double(value)
 }
 
-check_wt_trunc_n_present <- function(present, method, call) {
-  n <- length(present)
+check_wt_trunc_n_present <- function(n, method, call) {
   if (n >= 2) {
     return(invisible(TRUE))
   }

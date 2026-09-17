@@ -1283,6 +1283,13 @@ carry_trunc_record <- function(meta, n_obs, i) {
   }
 }
 
+# Whether each unit a covering record describes was moved onto a bound.
+trunc_unit_status <- function(meta) {
+  status <- logical(meta$n_obs)
+  status[meta$truncated_idx] <- TRUE
+  status
+}
+
 # A positional query reads its answer out of the record, so a record that does
 # not cover the object in front of it has no answer to give: reporting every
 # unit as untouched would be a wrong answer rather than a missing one.
@@ -1901,10 +1908,7 @@ unique.ps_trunc <- function(x, incomparables = FALSE, ...) {
   # them.
   if (
     record_covers(meta, vec_size(values)) &&
-      !merged_units_agree(
-        values,
-        seq_len(vec_size(values)) %in% meta$truncated_idx
-      )
+      !merged_units_agree(values, trunc_unit_status(meta))
   ) {
     attr(out, "ps_trunc_meta") <- drop_trunc_record(meta)
   }

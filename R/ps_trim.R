@@ -658,14 +658,14 @@ ps_trim.default <- function(
 
   # A score that arrived missing is not one this function can place against a
   # cutoff, so it takes no part in working the cutoff out and no part in the
-  # record. Every rule below compares scores with `which()`, which leaves a
-  # missing comparison out of the retained positions on its own; the trimmed
-  # positions are then everything else that was observed.
+  # record. Every rule below compares scores, and `which()` leaves a missing
+  # comparison out of the retained positions on its own. The trimmed positions
+  # are then everything else that was observed.
   observed <- !is.na(.propensity)
 
   # Decide which indices are kept
   if (method == "ps") {
-    keep_idx <- which(.propensity >= lower & .propensity <= upper)
+    keep <- .propensity >= lower & .propensity <= upper
   } else if (method == "adaptive") {
     sum_wt <- 1 / (.propensity[observed] * (1 - .propensity[observed]))
     k <- 2 * mean(sum_wt) - max(sum_wt)
@@ -682,7 +682,7 @@ ps_trim.default <- function(
       cutoff <- 0.5 - sqrt(0.25 - 1 / lambda)
     }
     meta_list$cutoff <- cutoff
-    keep_idx <- which(pmin(.propensity, 1 - .propensity) > cutoff)
+    keep <- pmin(.propensity, 1 - .propensity) > cutoff
   } else if (method == "pctl") {
     # `quantile()` names its result for the probability it was asked for, which
     # says nothing about the cutoff and reappears wherever the cutoff is printed
@@ -691,7 +691,7 @@ ps_trim.default <- function(
     q_upper <- unname(quantile(.propensity, probs = upper, na.rm = TRUE))
     meta_list$q_lower <- q_lower
     meta_list$q_upper <- q_upper
-    keep_idx <- which(.propensity >= q_lower & .propensity <= q_upper)
+    keep <- .propensity >= q_lower & .propensity <= q_upper
   } else if (method == "pref") {
     if (is.null(.exposure)) {
       abort(
@@ -710,7 +710,7 @@ ps_trim.default <- function(
     prop_exposure <- mean(.exposure, na.rm = TRUE)
     pref_score <- plogis(qlogis(.propensity) - qlogis(prop_exposure))
     meta_list$P <- prop_exposure
-    keep_idx <- which(pref_score >= lower & pref_score <= upper)
+    keep <- pref_score >= lower & pref_score <= upper
   } else if (method == "cr") {
     if (is.null(.exposure)) {
       abort(
@@ -734,10 +734,13 @@ ps_trim.default <- function(
     meta_list$cr_lower <- cr_lower
     meta_list$cr_upper <- cr_upper
 
-    keep_idx <- which(.propensity >= cr_lower & .propensity <= cr_upper)
+    keep <- .propensity >= cr_lower & .propensity <= cr_upper
   }
 
-  trimmed_idx <- setdiff(seq_len(n), c(keep_idx, which(!observed)))
+  # `keep` is missing only where the score is, which `observed` already rules
+  # out.
+  keep_idx <- which(keep)
+  trimmed_idx <- which(observed & !keep)
 
   # Replace trimmed entries with NA
   ps_na <- .propensity
@@ -847,11 +850,10 @@ ps_trim.matrix <- function(
 
   # A row with a missing score has no complete probability vector to place
   # against a threshold, so it takes no part in working the threshold out and no
-  # part in the record. Both rules below compare rows with `which()`, which
-  # leaves a missing comparison out of the retained positions on its own, and the
+  # part in the record. Both rules below compare rows, and `which()` leaves a
+  # missing comparison out of the retained positions on its own. The
   # group-preservation reset falls back to the complete rows for the same reason.
-  incomplete_rows <- which(apply(.propensity, 1, anyNA))
-  complete_rows <- setdiff(seq_len(n), incomplete_rows)
+  complete <- !apply(.propensity, 1, anyNA)
 
   # Initialize metadata
   meta_list <- list(method = method, is_matrix = TRUE)
@@ -884,16 +886,16 @@ ps_trim.matrix <- function(
     }
 
     # Apply symmetric trimming rule: keep if min(propensity scores) > delta
-    keep_idx <- which(apply(.propensity, 1, function(x) min(x) > delta))
+    keep <- apply(.propensity, 1, function(x) min(x) > delta)
 
     # Check if all treatment groups are preserved
-    if (length(unique(.exposure[keep_idx])) < k) {
+    if (length(unique(.exposure[which(keep)])) < k) {
       warn(
         "One or more groups removed after trimming; returning original data",
         warning_class = "propensity_no_data_warning",
         call = call
       )
-      keep_idx <- complete_rows
+      keep <- complete
     }
 
     meta_list$delta <- delta
@@ -902,7 +904,7 @@ ps_trim.matrix <- function(
     # Multi-category optimal trimming (Yang et al., 2016)
     # Calculate sum of inverse propensity scores
     sum_inv_ps <- rowSums(1 / .propensity)
-    sum_inv_complete <- sum_inv_ps[complete_rows]
+    sum_inv_complete <- sum_inv_ps[complete]
 
     # Define trimming function
     trim_fun <- function(x) {
@@ -917,7 +919,7 @@ ps_trim.matrix <- function(
     if (trim_fun(max(sum_inv_complete)) < 0) {
       # No valid solution, use maximum + 1
       lambda <- max(sum_inv_complete) + 1
-      keep_idx <- complete_rows # Keep all
+      keep <- complete # Keep all
     } else {
       # Find optimal lambda
       result <- tryCatch(
@@ -940,20 +942,20 @@ ps_trim.matrix <- function(
 
       if (!is.null(result)) {
         lambda <- result
-        keep_idx <- which(sum_inv_ps <= lambda)
+        keep <- sum_inv_ps <= lambda
 
         # Check if all treatment groups are preserved
-        if (length(unique(.exposure[keep_idx])) < k) {
+        if (length(unique(.exposure[which(keep)])) < k) {
           warn(
             "One or more groups removed after trimming; returning original data",
             warning_class = "propensity_no_data_warning",
             call = call
           )
-          keep_idx <- complete_rows
+          keep <- complete
           lambda <- NULL
         }
       } else {
-        keep_idx <- complete_rows
+        keep <- complete
         lambda <- NULL
       }
     }
@@ -961,7 +963,10 @@ ps_trim.matrix <- function(
     meta_list$lambda <- lambda
   }
 
-  trimmed_idx <- setdiff(seq_len(n), c(keep_idx, incomplete_rows))
+  # `keep` is missing only on an incomplete row, which `complete` already rules
+  # out.
+  keep_idx <- which(keep)
+  trimmed_idx <- which(complete & !keep)
 
   # Replace trimmed entries with NA
   ps_na <- .propensity
@@ -1516,16 +1521,19 @@ ps_trim_dose <- function(
     # `quantile()` names its result for the probability it was asked for, which
     # says nothing about the floor.
     threshold <- unname(stats::quantile(f, probs = lower, na.rm = TRUE))
-    keep_idx <- which(f >= threshold)
+    keep <- f >= threshold
   } else {
     # For a symmetric unimodal density the bound on `|z|` is a floor on the
     # density written in residual units, and the floor is what is recorded, so
     # that both methods describe the same kind of cut.
     threshold <- density_eval(density, upper, call = call) / sigma
-    keep_idx <- which(abs(z) <= upper)
+    keep <- abs(z) <= upper
   }
 
-  trimmed_idx <- setdiff(which(observed), keep_idx)
+  # `keep` is missing only where the density is, which `observed` already rules
+  # out.
+  keep_idx <- which(keep)
+  trimmed_idx <- which(observed & !keep)
 
   values <- mu
   values[trimmed_idx] <- NA_real_
@@ -3109,7 +3117,7 @@ refit_dose_trim <- function(meta, refit_model, data_sub, n_obs) {
   # exactly the rows it analyzed. A `subset` or a covariate missing on a kept
   # row leaves fewer of those than there are kept rows.
   if (!identical(meta$sigma_kind, "supplied")) {
-    residuals <- as.numeric(stats::residuals(refit_model, type = "response"))
+    residuals <- unname(stats::residuals(refit_model, type = "response"))
     meta$sigma <- density_scale_estimate(
       residuals[!is.na(residuals)],
       meta$density

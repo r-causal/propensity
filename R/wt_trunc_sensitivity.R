@@ -143,7 +143,19 @@ wt_trunc_sensitivity <- function(
     n_truncated = 0L
   )
 
-  vec_rbind(reference, !!!rows)
+  wt_trunc_sensitivity_table(c(list(reference), rows))
+}
+
+# The rows are summarised as plain lists and stacked once. Every row holds the
+# same fields, each a single value, and the first row's missing bounds are
+# doubles, so a column holds doubles wherever any row does.
+wt_trunc_sensitivity_table <- function(rows) {
+  columns <- lapply(names(rows[[1]]), function(field) {
+    unlist(lapply(rows, `[[`, field), use.names = FALSE)
+  })
+  names(columns) <- names(rows[[1]])
+
+  tibble::new_tibble(columns, nrow = length(rows))
 }
 
 check_wt_trunc_sensitivity_weights <- function(.weights, call) {
@@ -302,15 +314,17 @@ wt_trunc_sensitivity_summary <- function(
 ) {
   # The names a psw carries identify units, not rows of the table.
   present <- unname(present)
-  tibble::tibble(
+  min <- min(present)
+  max <- max(present)
+  list(
     lower = lower,
     upper = upper,
     lower_value = lower_value,
     upper_value = upper_value,
     n_truncated = n_truncated,
-    min = min(present),
-    max = max(present),
-    range_ratio = max(present) / min(present),
+    min = min,
+    max = max,
+    range_ratio = max / min,
     mean = mean(present)
   )
 }

@@ -174,7 +174,8 @@ interval. The M-estimation interval on the untruncated weights covered
 bound. What the bound bought was precision: a root mean squared error of
 0.084 against 0.096, for a bias of 0.015 (3\% of the effect) against 0.012.
 At an effective sample size of 53\% it covered 0.847 against 0.839
-untruncated, and at 81\% it changed nothing. A density trim at
+untruncated, and at 81\% it changed almost nothing (it applied in 0.2\% of
+replications, leaving coverage and RMSE unchanged). A density trim at
 \code{lower = 0.01} covered 0.843 at 64\%, below the untruncated weights.
 
 With t(4) or Laplace residuals, or a residual spread that varied with a

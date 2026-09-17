@@ -297,9 +297,16 @@ merged_units_agree <- function(values, status) {
 # `[` knows the subscript, which is what re-indexing a record takes. Every
 # occurrence of a recorded position is mapped onto the position it now holds, so
 # a subscript naming a position twice reports that unit twice. `NA` names no
-# position, so an element taken by one falls in neither set.
+# position, so an element taken by one falls in neither set, and neither does
+# one taken from past the last recorded position.
+#
+# `i` holds positions as `vec_as_location()` returns them, positive or `NA`. A
+# zero or negative value would drop or exclude elements of the mask rather than
+# name a position.
 reindex_positions <- function(positions, i) {
-  which(i %in% positions)
+  mask <- logical(max(c(positions, 0L)))
+  mask[positions] <- TRUE
+  which(mask[i])
 }
 
 # The rows `x[i, ]` is built from, as positions in `x`, which is the form a
