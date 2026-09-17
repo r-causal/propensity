@@ -339,6 +339,13 @@
 #' throughout, so a vector or matrix holding both returns a single `NA` element
 #' or row that neither status describes.
 #'
+#' [as.data.frame()] and `tibble::as_tibble()` turn a matrix of scores into a
+#' data frame whose columns are `ps_trim` vectors carrying the matrix's record, one
+#' row per unit, so the weight functions read the data frame as they read the
+#' matrix and a subset of its rows re-indexes the record. A data frame whose
+#' columns are not all trimmed with the same record is refused by the weight
+#' functions with an error of class `propensity_matrix_type_error`.
+#'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
 #' across the length change. [is_unit_trimmed()] and [ps_refit()] therefore
@@ -1972,6 +1979,33 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
   out
 }
 
+
+# Each column of the frame is a `ps_trim` vector carrying the matrix's record,
+# so the weight functions read the frame as they read the matrix and a subset
+# of its rows re-indexes the record through each column.
+#' @export
+as.data.frame.ps_trim_matrix <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  ...
+) {
+  modified_score_matrix_frame(
+    x,
+    row.names = row.names,
+    optional = optional,
+    record_attr = "ps_trim_meta",
+    build_column = function(values, meta) {
+      new_trimmed_ps(values, ps_trim_meta = meta)
+    },
+    ...
+  )
+}
+
+#' @exportS3Method tibble::as_tibble
+as_tibble.ps_trim_matrix <- function(x, ...) {
+  tibble::as_tibble(as.data.frame(x), ...)
+}
 
 #' @export
 `[.ps_trim_matrix` <- function(x, i, j, ..., drop = TRUE) {

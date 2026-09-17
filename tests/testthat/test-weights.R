@@ -2506,7 +2506,7 @@ test_that("a modified score in a data frame keeps its record for a binary exposu
   }
 })
 
-test_that("a data frame of trimmed categorical scores still gives weights", {
+test_that("a data frame of trimmed categorical scores gives the matrix's weights", {
   set.seed(43)
   n <- 100
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
@@ -2519,9 +2519,9 @@ test_that("a data frame of trimmed categorical scores still gives weights", {
     truncated = ps_trunc(ps_matrix, .exposure = exposure, lower = 0.1)
   )
 
-  # A matrix of modified scores converts to a data frame of plain columns, so
-  # the frame holds the modified values without the record. The frame is still
-  # a categorical frame of scores, and its weights are the matrix's weights.
+  # A matrix of modified scores converts to a data frame whose columns carry
+  # the matrix's record, so the frame's weights are the matrix's weights, with
+  # the same record and the same advice to refit.
   for (modification in names(modified)) {
     score <- modified[[modification]]
     from_matrix <- weights_and_refit_warning(
@@ -2536,16 +2536,18 @@ test_that("a data frame of trimmed categorical scores still gives weights", {
       info = modification
     )
 
-    from_frame <- wt_ate(
+    from_frame <- weights_and_refit_warning(
+      wt_ate,
       as.data.frame(score),
       exposure,
       exposure_type = "categorical"
     )
 
-    expect_s3_class(from_frame, "psw")
-    expect_equal(
-      as.numeric(from_frame),
-      as.numeric(from_matrix$weights),
+    expect_s3_class(from_frame$weights, "psw")
+    expect_identical(from_frame$warned, from_matrix$warned, info = modification)
+    expect_identical(
+      from_frame$weights,
+      from_matrix$weights,
       info = modification
     )
   }

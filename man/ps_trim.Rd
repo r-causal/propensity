@@ -407,6 +407,13 @@ score and one that arrived missing are both \code{NA}, and a trimmed row is \cod
 throughout, so a vector or matrix holding both returns a single \code{NA} element
 or row that neither status describes.
 
+\code{\link[=as.data.frame]{as.data.frame()}} and \code{tibble::as_tibble()} turn a matrix of scores into a
+data frame whose columns are \code{ps_trim} vectors carrying the matrix's record, one
+row per unit, so the weight functions read the data frame as they read the
+matrix and a subset of its rows re-indexes the record. A data frame whose
+columns are not all trimmed with the same record is refused by the weight
+functions with an error of class \code{propensity_matrix_type_error}.
+
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it
 across the length change. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and \code{\link[=ps_refit]{ps_refit()}} therefore

@@ -287,6 +287,13 @@ all of the merged units share one status, and dropped otherwise: a score or
 row that arrived where truncation would put it and one truncation moved
 there merge into a single element or row that neither status describes.
 
+\code{\link[=as.data.frame]{as.data.frame()}} and \code{tibble::as_tibble()} turn a matrix of scores into a
+data frame whose columns are \code{ps_trunc} vectors carrying the matrix's record, one
+row per unit, so the weight functions read the data frame as they read the
+matrix and a subset of its rows re-indexes the record. A data frame whose
+columns are not all truncated with the same record is refused by the weight
+functions with an error of class \code{propensity_matrix_type_error}.
+
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trunc} by subassignment carries
 it across the length change. \code{\link[=is_unit_truncated]{is_unit_truncated()}} therefore checks that the

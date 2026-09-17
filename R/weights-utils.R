@@ -2038,6 +2038,24 @@ handle_data_frame_weight_calculation <- function(
   # was resolved from. Resolving it twice makes the same decision twice and
   # announces it twice, once for a call that made one decision.
   if (exposure_type_check == "categorical") {
+    # A frame of trimmed or truncated score columns is the matrix it was made
+    # from, and takes that matrix's route so its record reaches the weights.
+    modified <- frame_as_modified_score_matrix(.propensity, call = call)
+    if (!is.null(modified)) {
+      return(calculate_weight_from_modified_ps(
+        .propensity = modified$scores,
+        .exposure = .exposure,
+        weight_fn = weight_fn_numeric,
+        modification_type = modified$modification_type,
+        exposure_type = exposure_type_check,
+        .focal_level = focal_params$.focal_level,
+        .reference_level = focal_params$.reference_level,
+        ...,
+        density_supplied = density_supplied,
+        call = call
+      ))
+    }
+
     # For categorical exposures, pass the whole data frame
     return(weight_fn_numeric(
       .propensity = .propensity,

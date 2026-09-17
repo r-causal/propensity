@@ -164,6 +164,16 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* `as.data.frame()` and `tibble::as_tibble()` of a trimmed or truncated
+  categorical score matrix now return columns of class `ps_trim` or
+  `ps_trunc` that carry the matrix's record. They previously returned plain
+  numeric columns, so `wt_ate()` and the other weight functions built weights
+  from the data frame with no trimming or truncation flag, record, or no-refit
+  warning. The weight functions now read such a data frame as they read the
+  matrix, and `ipw()` refuses the weights in the same way. A data frame whose
+  columns disagree about the record is refused with an error of class
+  `propensity_matrix_type_error`.
+
 * Combining `psw` objects now compares the trimming and truncation records of
   the scores they were built from, including whether the trimmed model was
   refit, as well as the weight truncation bound, and keeps each record without
