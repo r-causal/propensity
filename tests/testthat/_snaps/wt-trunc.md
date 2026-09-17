@@ -92,11 +92,20 @@
 # a subset that drops the record prints a truncation line without counts
 
     Code
-      wt_trunc(w, method = "wt", upper = 3)[1:3]
+      vctrs::vec_slice(wt_trunc(w, method = "wt", upper = 3), 1:3)
     Output
       <psw{estimand = ate; weights truncated}[3]>
       [1] 0.5 1.0 3.0
       truncation: weights truncated
+
+# a subset re-indexes the record and prints the truncation counts
+
+    Code
+      wt_trunc(w, method = "wt", upper = 3)[c(5, 1, 3)]
+    Output
+      <psw{estimand = ate; weights truncated}[3]>
+      [1] 3.0 0.5 3.0
+      truncation: wt (upper 3), 2 of 3 weights truncated
 
 # wt_trunc() refuses input that is not weights
 

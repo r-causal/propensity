@@ -4,10 +4,10 @@
 # propensity scores they were built from. The `wt_truncated` flag says the
 # weights were bounded, and the `psw_trunc_meta` record says at what bound and
 # which units it moved. The record is positional, so it follows the rules the
-# trimming record follows: kept through any operation that preserves the
-# length, dropped without comment on a length change, and left off the prototype
-# a combine builds. The flag describes the vector as a whole and survives all
-# of those.
+# trimming record follows: kept through elementwise arithmetic and
+# subassignment, carried through the subscript of `[`, dropped without comment
+# by any other slice or length change, and left off the prototype a combine
+# builds. The flag describes the vector as a whole and survives all of those.
 
 # Units 2 and 5 sit at the bound, so the positional query has something to
 # report and a result that lost the record reports something visibly different.
@@ -162,29 +162,40 @@ test_that("a full-length psw subset keeps the weight truncation record", {
   expect_identical(attr(whole, "psw_trunc_meta"), meta)
   expect_identical(is_unit_wt_truncated(whole), wt_truncated_units)
 
+  # A slice is not handed to anything that knows its subscript, so even one
+  # that leaves every unit in place cannot vouch for the record.
   sliced <- expect_silent(vec_slice(w, seq_along(w)))
-  expect_identical(attr(sliced, "psw_trunc_meta"), meta)
+  expect_null(attr(sliced, "psw_trunc_meta"))
   expect_true(is_wt_truncated(sliced))
 })
 
-test_that("shortening a psw drops the weight truncation record and keeps the flag", {
+test_that("shortening a psw re-indexes the weight truncation record through `[`", {
   w <- wt_truncated_psw()
 
   sub <- expect_silent(w[1:2])
   expect_s3_class(sub, "psw")
   expect_length(sub, 2)
-  expect_null(attr(sub, "psw_trunc_meta"))
+  expect_identical(
+    attr(sub, "psw_trunc_meta"),
+    wt_trunc_record(truncated_idx = 2L, n_obs = 2L)
+  )
   expect_true(is_wt_truncated(sub))
   expect_identical(estimand(sub), "ate")
+  expect_identical(is_unit_wt_truncated(sub), c(FALSE, TRUE))
+})
+
+test_that("shortening a psw by a slice drops the weight truncation record and keeps the flag", {
+  w <- wt_truncated_psw()
 
   sliced <- expect_silent(vec_slice(w, 1:2))
   expect_null(attr(sliced, "psw_trunc_meta"))
   expect_true(is_wt_truncated(sliced))
+  expect_identical(estimand(sliced), "ate")
 
   # The record is gone, so the positional query has nothing to answer from and
   # refuses rather than reporting every unit as untouched.
   expect_error(
-    is_unit_wt_truncated(sub),
+    is_unit_wt_truncated(sliced),
     class = "propensity_missing_meta_error"
   )
 })
@@ -489,7 +500,7 @@ test_that("a weight-truncated psw with no record agrees with any bound", {
   # A record already dropped, by a slice or by an earlier combine, has nothing
   # to disagree with, so only the flag is compared.
   w <- wt_truncated_psw()
-  alt_slice <- alt_wt_truncated_psw()[1:2]
+  alt_slice <- vec_slice(alt_wt_truncated_psw(), 1:2)
   expect_null(attr(alt_slice, "psw_trunc_meta"))
   expect_true(is_wt_truncated(alt_slice))
 

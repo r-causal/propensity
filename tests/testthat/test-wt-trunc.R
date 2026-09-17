@@ -792,7 +792,13 @@ test_that("the names on the weights are kept", {
 test_that("a subset that drops the record prints a truncation line without counts", {
   w <- psw(c(0.5, 1, 4, 2, 25), estimand = "ate")
 
-  expect_snapshot(wt_trunc(w, method = "wt", upper = 3)[1:3])
+  expect_snapshot(vctrs::vec_slice(wt_trunc(w, method = "wt", upper = 3), 1:3))
+})
+
+test_that("a subset re-indexes the record and prints the truncation counts", {
+  w <- psw(c(0.5, 1, 4, 2, 25), estimand = "ate")
+
+  expect_snapshot(wt_trunc(w, method = "wt", upper = 3)[c(5, 1, 3)])
 })
 
 test_that("wt_trunc() refuses input that is not weights", {

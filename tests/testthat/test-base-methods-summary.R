@@ -122,9 +122,11 @@ test_that("Summary: Key differences and missing methods", {
     generics[vapply(generics, defines_method, logical(1), class = class)]
   }
 
-  # psw takes `[`, summary(), min(), max(), range(), median(), quantile(),
+  # psw takes summary(), min(), max(), range(), median(), quantile(),
   # anyDuplicated(), and diff() from causalgenerics' causal_wts methods;
-  # ps_trim and ps_trunc each define their own.
+  # ps_trim and ps_trunc each define their own. psw defines `[` so that its
+  # position records follow the subscript, and passes the subsetting itself on
+  # to causal_wts.
   inherited <- c(
     "[",
     "summary",
@@ -136,14 +138,15 @@ test_that("Summary: Key differences and missing methods", {
     "anyDuplicated",
     "diff"
   )
-  expect_equal(defined_for(inherited, "psw"), character(0))
+  expect_equal(defined_for(inherited, "psw"), "[")
   expect_equal(defined_for(inherited, "causal_wts"), inherited)
   expect_equal(defined_for(inherited, "ps_trim"), inherited)
   expect_equal(defined_for(inherited, "ps_trunc"), inherited)
 
   # ps_trim and ps_trunc implement sort(), unique(), and rep() so that the
   # record of which units were modified follows the result. psw implements
-  # none of the three and takes the vctrs defaults.
+  # none of the three: sort() reaches its `[`, and unique() and rep() take the
+  # vctrs defaults, which drop the position records.
   record_keeping <- c("sort", "unique", "rep")
   expect_equal(defined_for(record_keeping, "psw"), character(0))
   expect_equal(defined_for(record_keeping, "causal_wts"), character(0))

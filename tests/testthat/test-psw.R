@@ -713,8 +713,11 @@ test_that("a full-length psw subset keeps the trimming record", {
   expect_identical(ps_trim_meta(whole), meta)
   expect_identical(is_unit_trimmed(whole), c(TRUE, FALSE, FALSE, FALSE, TRUE))
 
+  # A slice is not handed to anything that knows its subscript, so even one
+  # that leaves every unit in place cannot vouch for the record.
   sliced <- expect_silent(vec_slice(w, seq_along(w)))
-  expect_identical(ps_trim_meta(sliced), meta)
+  expect_null(ps_trim_meta(sliced))
+  expect_true(is_ps_trimmed(sliced))
 })
 
 test_that("length-preserving psw arithmetic keeps truncation and calibration records", {
@@ -731,29 +734,45 @@ test_that("length-preserving psw arithmetic keeps truncation and calibration rec
   expect_true(is_ps_calibrated(out))
 })
 
-test_that("shortening a psw drops the trimming record silently", {
+test_that("shortening a psw with `[` re-indexes the trimming record", {
   w <- trimmed_psw()
 
   sub <- expect_silent(w[1:2])
   expect_s3_class(sub, "psw")
   expect_length(sub, 2)
-  expect_null(ps_trim_meta(sub))
-  expect_null(attr(sub, "ps_trim_meta"))
-
-  # Everything that is not indexed by observation is untouched by the drop.
+  expect_identical(ps_trim_meta(sub)$n_obs, 2L)
+  expect_identical(is_unit_trimmed(sub), c(TRUE, FALSE))
   expect_true(is_ps_trimmed(sub))
   expect_identical(estimand(sub), "ate; trimmed")
-
-  sliced <- expect_silent(vec_slice(w, 1:2))
-  expect_null(ps_trim_meta(sliced))
-  expect_true(is_ps_trimmed(sliced))
 })
 
-test_that("shortening a psw drops the truncation record silently", {
+test_that("shortening a psw by a slice drops the trimming record silently", {
+  w <- trimmed_psw()
+
+  sliced <- expect_silent(vec_slice(w, 1:2))
+  expect_s3_class(sliced, "psw")
+  expect_length(sliced, 2)
+  expect_null(ps_trim_meta(sliced))
+  expect_null(attr(sliced, "ps_trim_meta"))
+
+  # Everything that is not indexed by observation is untouched by the drop.
+  expect_true(is_ps_trimmed(sliced))
+  expect_identical(estimand(sliced), "ate; trimmed")
+})
+
+test_that("shortening a psw re-indexes the truncation record through `[` and a slice drops it", {
   truncated <- truncated_psw()
+  meta <- ps_trunc_meta(truncated)
+
   sub <- expect_silent(truncated[1:2])
-  expect_null(ps_trunc_meta(sub))
+  expect_identical(ps_trunc_meta(sub)$n_obs, 2L)
+  expect_identical(is_unit_truncated(sub), is_unit_truncated(truncated)[1:2])
   expect_true(is_ps_truncated(sub))
+
+  sliced <- expect_silent(vec_slice(truncated, 1:2))
+  expect_null(ps_trunc_meta(sliced))
+  expect_true(is_ps_truncated(sliced))
+  expect_identical(ps_trunc_meta(truncated), meta)
 })
 
 # A calibration record names the curve the scores were calibrated with and
@@ -920,16 +939,22 @@ test_that("shortening a psw with a score and a trimming record warns only for th
   expect_identical(stabilization_score(w), score)
   expect_false(is.null(ps_trim_meta(w)))
 
-  out <- collect_warning_classes(w[1:2])
-
   # A user who recorded a score can recompute the weights on the subset, so that
-  # drop is worth saying. The trimming record has a query-time guard instead, and
-  # announcing it here would fire on every outcome model fit on these weights.
+  # drop is worth saying. The trimming record is either re-indexed or has a
+  # query-time guard instead, and announcing its drop would fire on every
+  # outcome model fit on these weights.
+  out <- collect_warning_classes(vec_slice(w, 1:2))
   expect_identical(out$classes, "propensity_stabilization_score_warning")
   expect_null(stabilization_score(out$value))
   expect_null(ps_trim_meta(out$value))
   expect_true(is_stabilized(out$value))
   expect_true(is_ps_trimmed(out$value))
+
+  out <- collect_warning_classes(w[1:2])
+  expect_identical(out$classes, "propensity_stabilization_score_warning")
+  expect_null(stabilization_score(out$value))
+  expect_identical(is_unit_trimmed(out$value), c(TRUE, FALSE))
+  expect_true(is_stabilized(out$value))
 })
 
 test_that("the trimmed flag survives operations that drop the trimming record", {

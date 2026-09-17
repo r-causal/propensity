@@ -96,9 +96,8 @@ method_owners <- function(methods) {
 # Accessors the abstract layer registers directly on `causal_wts`.
 causal_wts_accessors <- c("estimand", "estimand<-", "is_causal_wt")
 
-# Methods the abstract layer supplies on `causal_wts` and that a `psw` object
-# reaches by inheritance rather than through a method of its own.
-psw_layer_generics <- c(
+# Methods the abstract layer supplies on `causal_wts`.
+causal_wts_layer_generics <- c(
   "vec_math",
   "Summary",
   "min",
@@ -118,6 +117,12 @@ psw_layer_generics <- c(
   ">="
 )
 
+# The subset of those a `psw` object reaches by inheritance rather than through
+# a method of its own. `[.psw` carries the position records a psw holds through
+# the subscript, which the abstract layer knows nothing about, and hands the
+# subsetting itself to `[.causal_wts`.
+psw_layer_generics <- setdiff(causal_wts_layer_generics, "[")
+
 # Methods propensity must keep on `psw`. `vec_ptype2`, `vec_cast`,
 # `vec_ptype_abbr`, and `vec_ptype_full` cannot be inherited at all: vctrs
 # resolves them on `class(x)[[1]]` and never walks the class vector.
@@ -130,6 +135,7 @@ psw_layer_generics <- c(
 # other test passes a `psw` to it, so its loss only shows up as
 # `is_unit_truncated.default` aborting in a user's session.
 psw_retained_methods <- c(
+  `[` = "psw",
   vec_restore = "psw",
   vec_arith = "psw",
   `vec_arith.numeric` = "psw",
@@ -175,7 +181,7 @@ psw_retained_methods <- c(
 
 test_that("causalgenerics supplies the abstract layer on causal_wts", {
   owners <- vapply(
-    psw_layer_generics,
+    causal_wts_layer_generics,
     method_owner,
     character(1),
     cls = "causal_wts"
@@ -184,8 +190,8 @@ test_that("causalgenerics supplies the abstract layer on causal_wts", {
   expect_identical(
     owners,
     stats::setNames(
-      rep("causalgenerics", length(psw_layer_generics)),
-      psw_layer_generics
+      rep("causalgenerics", length(causal_wts_layer_generics)),
+      causal_wts_layer_generics
     )
   )
 })
@@ -301,7 +307,7 @@ test_that("subsetting a psw preserves trimming, truncation, and calibration", {
   expect_equal(metadata(w[]), expected)
 })
 
-test_that("subsetting a trimmed psw drops the unit-level trimming index", {
+test_that("subsetting a trimmed psw re-indexes the unit-level trimming index", {
   set.seed(42)
   n <- 60
   z <- rnorm(n)
@@ -323,22 +329,26 @@ test_that("subsetting a trimmed psw drops the unit-level trimming index", {
   expect_true(is_ps_trimmed(wt))
   expect_length(is_unit_trimmed(wt), n)
 
-  # The trimming index is written against the full vector and nothing rebuilding
-  # a psw is handed the subscript, so a subset cannot re-index it and the index
-  # is dropped. The drop is silent because vctrs sees only some of the routes
-  # these weights take: base R re-attaches the index to a shortened weights
-  # column inside `model.frame()`, so a warning here would be neither complete
-  # nor about anything in the user's code. What the assertion guards on the other
-  # side is the blind-attribute-copy regression, which would re-attach an index
-  # built against the original vector and return a length-`n` logical for a
-  # length-2 subset. Whether the index is missing or merely does not cover these
-  # weights, `is_unit_trimmed()` reports that it cannot answer rather than
-  # answering from it.
+  # The trimming index is written against the full vector. `[` knows its
+  # subscript and re-indexes the index onto it, so a length-2 subset answers
+  # for its own two units rather than returning a length-`n` logical, the
+  # blind-attribute-copy regression.
   first_two <- expect_silent(wt[1:2])
   expect_true(is_ps_trimmed(first_two))
-  expect_null(ps_trim_meta(first_two))
+  expect_identical(is_unit_trimmed(first_two), is_unit_trimmed(wt)[1:2])
+
+  # A slice is not handed its subscript, so it drops the index silently: vctrs
+  # sees only some of the routes these weights take, since base R re-attaches
+  # the index to a shortened weights column inside `model.frame()`, and a
+  # warning would be neither complete nor about anything in the user's code.
+  # Whether the index is missing or merely does not cover these weights,
+  # `is_unit_trimmed()` reports that it cannot answer rather than answering
+  # from it.
+  sliced <- expect_silent(vctrs::vec_slice(wt, 1:2))
+  expect_true(is_ps_trimmed(sliced))
+  expect_null(ps_trim_meta(sliced))
   expect_error(
-    is_unit_trimmed(first_two),
+    is_unit_trimmed(sliced),
     class = "propensity_missing_meta_error"
   )
 })
