@@ -201,3 +201,24 @@ test_that("slicing, subassignment, and arithmetic on a ps_trunc are unchanged", 
 
   expect_type(tr + 0, "double")
 })
+
+# Matrices ---------------------------------------------------------------------
+
+test_that("c() of a trimmed or truncated matrix still flattens it", {
+  exposure <- factor(c("a", "b", "c", "a"))
+  ps_matrix <- rbind(
+    c(0.60, 0.20, 0.20),
+    c(0.20, 0.60, 0.20),
+    c(0.30, 0.40, 0.30),
+    c(0.05, 0.50, 0.45)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "ps")
+  expect_identical(c(trimmed), c(unclass(trimmed)))
+  expect_null(attributes(c(trimmed)))
+
+  truncated <- ps_trunc(ps_matrix, .exposure = exposure, method = "ps")
+  expect_identical(c(truncated), c(unclass(truncated)))
+  expect_null(attributes(c(truncated)))
+})

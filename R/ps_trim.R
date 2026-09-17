@@ -2463,6 +2463,27 @@ na.omit.ps_trim <- function(object, ...) {
   result
 }
 
+# Combining a single `ps_trim` hands back that vector, so its record still
+# describes it. Every combine through vctrs restores against a zero-length
+# prototype that cannot be told apart from one a caller supplied, and drops the
+# positions. Anything other than one unnamed input with the default
+# `recursive` and `use.names` goes to vctrs unchanged, and a matrix of scores,
+# which is not a vctrs vector, keeps base `c()`'s flattening.
+#' @export
+c.ps_trim <- function(..., recursive = FALSE, use.names = TRUE) {
+  if (
+    ...length() == 1L &&
+      !is.matrix(..1) &&
+      is.null(...names()) &&
+      isFALSE(recursive) &&
+      isTRUE(use.names)
+  ) {
+    return(..1)
+  }
+
+  NextMethod()
+}
+
 #' @export
 vec_restore.ps_trim <- function(x, to, ...) {
   # vec_data in case x is already a vctr
@@ -2473,9 +2494,17 @@ vec_restore.ps_trim <- function(x, to, ...) {
   # change, so a record written for a different number of observations cannot be
   # re-indexed onto the data arriving here. Zero-length data is exempt: a
   # prototype or an empty slice holds no observations, so no position in the
-  # record contradicts it, and the record rides along to the restore that builds
-  # the real result.
-  if (length(data) > 0 && !record_covers(meta, length(data))) {
+  # record contradicts it.
+  #
+  # Data restored against a zero-length `to` did not come from `to`: a
+  # prototype, whether sliced from the one input of a combine or supplied by the
+  # caller, is restored onto observations it was never written for, in an order
+  # nothing here is told. Its positions are dropped without comment, as a
+  # combine of several inputs drops them, and base `c()` of a single vector keeps
+  # them by returning that vector.
+  if (length(data) > 0 && length(to) == 0) {
+    meta <- drop_trim_record(meta)
+  } else if (length(data) > 0 && !record_covers(meta, length(data))) {
     meta <- discard_trim_record(meta, length(data))
   }
 

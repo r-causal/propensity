@@ -1,5 +1,15 @@
 # propensity 0.1.0.9000 (development version)
 
+* A `ps_trim` or `ps_trunc` vector restored against a zero-length prototype
+  now drops the positions in its record, keeping its class and the description
+  of the trimming or truncation. Combining reordered pieces with
+  `vctrs::list_unchop(ptype = )` or `vctrs::vec_c(.ptype = )` previously kept a
+  record naming the wrong units; `is_unit_trimmed()`, `is_unit_truncated()`,
+  and `ps_refit()` now refuse such a result with an error of class
+  `propensity_missing_meta_error`. `vctrs::vec_c()` and `vctrs::list_unchop()`
+  of a single vector drop the positions as well, while `c()` of a single
+  vector returns it unchanged.
+
 * `c()` of a single `psw` now returns it unchanged, keeping its trimming,
   truncation, calibration, and weight truncation records, as `c()` already
   did for a single `ps_trim` or `ps_trunc` vector. Every other combine,
