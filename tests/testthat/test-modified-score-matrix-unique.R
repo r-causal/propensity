@@ -185,3 +185,63 @@ test_that("unique() of a ps_trunc_matrix drops a record a moved row shares with 
     )
   }
 })
+
+# One row and no rows ----------------------------------------------------------
+
+test_that("unique() of a score matrix whose rows are all identical returns one row", {
+  # Rows 2 and 4 hold the same scores, and both were retained and left unmoved.
+  trimmed <- unique_trim_matrix(1:7)[c(2, 4), , drop = FALSE]
+  truncated <- unique_trunc_matrix(1:7)[c(2, 4), , drop = FALSE]
+
+  out_trim <- expect_silent(unique(trimmed))
+
+  expect_s3_class(out_trim, "ps_trim_matrix")
+  expect_identical(dim(out_trim), c(1L, 3L))
+  expect_identical(colnames(out_trim), c("a", "b", "c"))
+  expect_identical(
+    unclass(out_trim)[,],
+    unclass(trimmed)[1, , drop = FALSE][,]
+  )
+  trim_meta <- ps_trim_meta(out_trim)
+  expect_identical(trim_meta$n_obs, 1L)
+  expect_identical(trim_meta$keep_idx, 1L)
+  expect_identical(trim_meta$trimmed_idx, integer(0))
+  expect_true(is_ps_trimmed(out_trim))
+  expect_identical(is_unit_trimmed(out_trim), FALSE)
+
+  out_trunc <- expect_silent(unique(truncated))
+
+  expect_s3_class(out_trunc, "ps_trunc_matrix")
+  expect_identical(dim(out_trunc), c(1L, 3L))
+  expect_identical(colnames(out_trunc), c("a", "b", "c"))
+  expect_identical(
+    unclass(out_trunc)[,],
+    unclass(truncated)[1, , drop = FALSE][,]
+  )
+  trunc_meta <- ps_trunc_meta(out_trunc)
+  expect_identical(trunc_meta$n_obs, 1L)
+  expect_identical(trunc_meta$truncated_idx, integer(0))
+  expect_true(is_ps_truncated(out_trunc))
+  expect_identical(is_unit_truncated(out_trunc), FALSE)
+})
+
+test_that("unique() of a score matrix with no rows returns no rows", {
+  trimmed <- unique_trim_matrix(1:7)[integer(0), , drop = FALSE]
+  truncated <- unique_trunc_matrix(1:7)[integer(0), , drop = FALSE]
+
+  out_trim <- expect_silent(unique(trimmed))
+
+  expect_s3_class(out_trim, "ps_trim_matrix")
+  expect_identical(dim(out_trim), c(0L, 3L))
+  expect_identical(colnames(out_trim), c("a", "b", "c"))
+  expect_identical(ps_trim_meta(out_trim)$n_obs, 0L)
+  expect_identical(is_unit_trimmed(out_trim), logical(0))
+
+  out_trunc <- expect_silent(unique(truncated))
+
+  expect_s3_class(out_trunc, "ps_trunc_matrix")
+  expect_identical(dim(out_trunc), c(0L, 3L))
+  expect_identical(colnames(out_trunc), c("a", "b", "c"))
+  expect_identical(ps_trunc_meta(out_trunc)$n_obs, 0L)
+  expect_identical(is_unit_truncated(out_trunc), logical(0))
+})
