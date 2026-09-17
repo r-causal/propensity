@@ -28,11 +28,15 @@
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
-#' @param method One of `"ps"`, `"pctl"`, or `"cr"`:
+#' @param method One of `"ps"`, `"adaptive"`, `"pctl"`, or `"cr"`:
 #'   * `"ps"` (default): Truncate directly on propensity score values. Values
 #'     outside `[lower, upper]` are set to the nearest bound. For categorical
 #'     exposures, applies symmetric truncation using `lower` as the threshold
 #'     (delta) and renormalizes rows to sum to 1.
+#'   * `"adaptive"`: Truncate at \eqn{[1/c, 1 - 1/c]} with
+#'     \eqn{c = \sqrt{n} \log(n) / 5} (Gruber et al., 2022), where \eqn{n} is
+#'     the number of propensity scores present (binary exposures only). See
+#'     **The adaptive bound** below.
 #'   * `"pctl"`: Truncate at quantiles of the propensity score distribution.
 #'     The `lower` and `upper` arguments specify quantile probabilities. For
 #'     categorical exposures, quantiles are computed across all columns.
@@ -47,6 +51,8 @@
 #'
 #'   For categorical exposures, only `"ps"` and `"pctl"` are supported.
 #' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
+#'   * `method = "adaptive"`: Not used. Supplying either is ignored with a
+#'     warning.
 #'   * `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9). For
 #'     categorical exposures, `lower` is the truncation threshold delta
 #'     (default: 0.01) and `upper` is ignored. That default deliberately differs
@@ -91,6 +97,46 @@
 #'
 #' For **categorical exposures**, values below the threshold are set to the
 #' threshold and each row is renormalized to sum to 1.
+#'
+#' ## The adaptive bound
+#'
+#' `method = "adaptive"` bounds a binary propensity score at
+#' \eqn{[1/c, 1 - 1/c]}, where \eqn{c = \sqrt{n} \log(n) / 5} is the weight
+#' bound of Gruber et al. (2022) and \eqn{n} counts the scores that are present,
+#' as in [wt_trunc()]. At \eqn{n = 1000}, \eqn{c} is 43.7 and the bounds are
+#' 0.023 and 0.977. The bound adapts to the sample size alone, loosening as
+#' \eqn{n} grows, and leaves the estimand alone. `ps_trim(method = "adaptive")`
+#' instead adapts to the estimated scores, tightening under poor overlap, and
+#' changes the estimand to the population it keeps.
+#'
+#' For **unstabilized ATE weights** the bound is the weight bound written on the
+#' score scale. A treated unit's weight is \eqn{1/e}, so the floor \eqn{1/c}
+#' caps the treated weights at \eqn{c}; an untreated unit's weight is
+#' \eqn{1/(1 - e)}, so the ceiling \eqn{1 - 1/c} caps the untreated weights at
+#' \eqn{c}. `wt_ate()` on the result therefore gives the weights
+#' `wt_trunc(wt_ate(ps, .exposure), method = "adaptive")` gives, with one
+#' difference, provided every unit's exposure is observed. (A unit with a
+#' present score and a missing exposure counts toward \eqn{n} here but has no
+#' weight for [wt_trunc()] to count, so the two bounds then differ.) The
+#' difference is this: a treated unit above \eqn{1 - 1/c} or an untreated unit below
+#' \eqn{1/c}, whose weight is already close to 1, is moved to that bound too,
+#' and its weight rises to \eqn{c / (c - 1)}. Every weight above
+#' \eqn{c / (c - 1)} is the same under either route. A lower bound alone would
+#' not do the same work, since no floor on \eqn{e} bounds an untreated unit's
+#' weight.
+#'
+#' For **stabilized ATE weights** the equivalence does not carry over as it
+#' stands. Stabilizing multiplies each arm's weights by that arm's prevalence,
+#' so the treated weights are capped at \eqn{P(A = 1) c} and the untreated
+#' weights at \eqn{P(A = 0) c}, which agree only when the two arms are equally
+#' common.
+#'
+#' The bounds cross when \eqn{c < 2}, which holds for fewer than 15 scores, so
+#' `"adaptive"` needs at least 15 scores present and raises an error of class
+#' `propensity_range_error` otherwise. It is refused for categorical exposures
+#' with an error of class `propensity_method_error`: truncating a categorical
+#' score renormalizes each row, which moves scores the bound never reached, so
+#' the bound no longer caps the weights.
 #'
 #' **Arithmetic behavior**: Arithmetic operations on `ps_trunc` objects return
 #' plain numeric vectors. Once propensity scores are transformed (e.g., into
@@ -196,6 +242,12 @@
 #' with limited overlap in estimation of average treatment effects.
 #' *Biometrika*, 96(1), 187--199.
 #'
+#' Gruber, S., Phillips, R. V., Lee, H., & van der Laan, M. J. (2022).
+#' Data-adaptive selection of the propensity score truncation level for
+#' inverse-probability-weighted and targeted maximum likelihood estimators of
+#' marginal point treatment effects. *American Journal of Epidemiology*,
+#' 191(9), 1640--1651.
+#'
 #' Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 #' assessing the feasibility of comparative effectiveness research.
 #' *Comparative Effectiveness Research*, 3, 11--20.
@@ -215,6 +267,10 @@
 #' # Truncate to [0.1, 0.9]
 #' ps_t <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
 #' ps_t
+#'
+#' # Bound at [1/c, 1 - 1/c], c = sqrt(n) log(n) / 5, which caps the
+#' # unstabilized ATE weights at c
+#' ps_trunc(ps, method = "adaptive")
 #'
 #' # Truncate at the 1st and 99th percentiles
 #' ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
@@ -237,7 +293,7 @@
 #' @export
 ps_trunc <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -260,7 +316,7 @@ ps_trunc <- function(
 #' @export
 ps_trunc.default <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -331,6 +387,10 @@ ps_trunc.default <- function(
 
     lb <- lower
     ub <- upper
+  } else if (method == "adaptive") {
+    bounds <- ps_trunc_adaptive_bounds(.propensity, lower, upper, call = call)
+    lb <- bounds$lower
+    ub <- bounds$upper
   } else if (method == "pctl") {
     if (is.null(lower)) {
       lower <- 0.05
@@ -405,7 +465,7 @@ ps_trunc.default <- function(
 #' @export
 ps_trunc.matrix <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -425,9 +485,12 @@ ps_trunc.matrix <- function(
   # reject the ones the categorical path does not define.
   method <- rlang::arg_match(
     method,
-    values = c("ps", "pctl", "cr"),
+    values = c("ps", "adaptive", "pctl", "cr"),
     error_call = call
   )
+  if (method == "adaptive") {
+    abort_adaptive_categorical(call = call)
+  }
   if (!method %in% c("ps", "pctl")) {
     abort(
       c(
@@ -649,7 +712,7 @@ check_truncated_matrix_interior <- function(
 #' @export
 ps_trunc.data.frame <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -726,7 +789,7 @@ ps_trunc.data.frame <- function(
 #' @export
 ps_trunc.glm <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -767,7 +830,7 @@ ps_trunc.glm <- function(
 #' @export
 ps_trunc.lm <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -821,7 +884,7 @@ ps_trunc_dose_remedy <- function() {
 #' @export
 ps_trunc.multinom <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -877,9 +940,15 @@ ps_trunc_from_model <- function(
 ) {
   method <- rlang::arg_match(
     method,
-    values = c("ps", "pctl", "cr"),
+    values = c("ps", "adaptive", "pctl", "cr"),
     error_call = call
   )
+
+  # A fit with a column for every level is refused before its exposure is read,
+  # so the refusal is not preceded by an announcement of what was read.
+  if (method == "adaptive" && model_fits_levels(model)) {
+    abort_adaptive_categorical(call = call)
+  }
 
   args <- prepare_model_ps(
     model,
@@ -930,7 +999,7 @@ ps_trunc_from_model <- function(
 #' @export
 ps_trunc.ps_trunc <- function(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -948,6 +1017,62 @@ ps_trunc.ps_trunc <- function(
     warning_class = "propensity_already_modified_warning"
   )
   .propensity
+}
+
+abort_adaptive_categorical <- function(call = rlang::caller_env()) {
+  abort(
+    c(
+      "Method {.val adaptive} is not supported for categorical exposures.",
+      i = "Bounding a categorical score renormalizes each row, which moves the
+           scores the bound never reached, so a bound on the scores is no
+           longer a bound on the weights.",
+      i = "Use {.fun ps_trim} with {.code method = \"optimal\"}, or build the
+           weights and bound them with {.fun wt_trunc}."
+    ),
+    error_class = "propensity_method_error",
+    call = call
+  )
+}
+
+# Gruber et al. (2022) cap the weights at c = sqrt(n) log(n) / 5. Flooring a
+# binary score at 1/c caps the treated units' unstabilized ATE weights at c, and
+# capping it at 1 - 1/c does the same for the untreated units, so the bound is
+# two-sided. `n` counts the scores present, as `wt_trunc()` counts the weights.
+ps_trunc_adaptive_bounds <- function(.propensity, lower, upper, call) {
+  if (!is.null(lower) || !is.null(upper)) {
+    warn(
+      c(
+        "For {.code method = 'adaptive'}, {.arg lower} and {.arg upper} are
+         ignored.",
+        i = "The adaptive bounds are set by the number of propensity scores. To
+             give bounds yourself, use {.code method = 'ps'}."
+      ),
+      call = call
+    )
+  }
+
+  n <- sum(!is.na(.propensity))
+  c_bound <- adaptive_weight_bound(n)
+
+  # Below c = 2 the floor lies above the ceiling, and at n = 1 or fewer c is not
+  # positive at all. The bound first exceeds 2 at 15 scores.
+  if (n < 2 || c_bound <= 2) {
+    abort(
+      c(
+        "For {.code method = 'adaptive'}, at least 15 propensity scores must be
+         present.",
+        x = "{n} score{?s} {?is/are} present.",
+        i = "The bounds are 1/c and 1 - 1/c with c = sqrt(n) log(n) / 5, and
+             below 15 scores c is under 2, so the lower bound would lie above
+             the upper one.",
+        i = "Supply bounds yourself with {.code method = 'ps'}."
+      ),
+      error_class = "propensity_range_error",
+      call = call
+    )
+  }
+
+  list(lower = 1 / c_bound, upper = 1 - 1 / c_bound)
 }
 
 # The common range is the region both exposure groups reach, which is empty when
@@ -1097,7 +1222,8 @@ check_trunc_record <- function(meta, n, fn, call = rlang::caller_env()) {
 #'
 #' @param x A `ps_trunc` object created by [ps_trunc()].
 #' @return A named list with truncation metadata, including:
-#'   * `method` -- the truncation method used (`"ps"`, `"pctl"`, or `"cr"`)
+#'   * `method` -- the truncation method used (`"ps"`, `"adaptive"`,
+#'     `"pctl"`, or `"cr"`)
 #'   * `lower_bound`, `upper_bound` -- the applied bounds
 #'   * `truncated_idx` -- integer positions of values that were winsorized
 #'   * `n_obs` -- the number of observations those positions describe

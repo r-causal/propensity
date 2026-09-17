@@ -335,6 +335,25 @@ test_that("an adaptive bound is not the same truncation as an equal 'ps' bound",
   expect_false(inherits(combined, "ps_trunc"))
 })
 
+test_that("adaptive bounds over different numbers of scores do not combine", {
+  # Twenty scores put the floor at 1/c(20) = 0.373 and thirty at
+  # 1/c(30) = 0.265, so the two are different truncations.
+  first <- ps_trunc(adaptive_ps, method = "adaptive")
+  second <- ps_trunc(seq(0.1, 0.9, length.out = 30), method = "adaptive")
+  expect_equal(
+    ps_trunc_meta(second)$lower_bound,
+    1 / gruber_c(30),
+    tolerance = 1e-12
+  )
+
+  expect_warning(
+    combined <- c(first, second),
+    class = "propensity_coercion_warning"
+  )
+  expect_false(inherits(combined, "ps_trunc"))
+  expect_equal(combined, c(as.numeric(first), as.numeric(second)))
+})
+
 test_that("two adaptive bounds over the same number of scores combine", {
   first <- ps_trunc(adaptive_ps, method = "adaptive")
   second <- ps_trunc(rev(adaptive_ps), method = "adaptive")
@@ -455,6 +474,37 @@ test_that("the adaptive bound on a binomial fit bounds the scores it reports", {
   )
 })
 
+test_that("the adaptive bound on a fit with excluded rows counts its fitted values", {
+  # Two of 22 rows are missing a covariate, and `na.exclude` pads the scores
+  # back to 22 with `NA`. The bound counts the 20 fitted values, so the floor
+  # is 1/c(20) = 0.373 rather than 1/c(22) = 0.345.
+  dat <- adaptive_fit_data[1:22, ]
+  dat$x1[c(3, 9)] <- NA
+  fit <- glm(
+    z ~ x1 + x2,
+    data = dat,
+    family = binomial(),
+    na.action = na.exclude
+  )
+  scores <- predict(fit, type = "response")
+  expect_length(scores, 22)
+  expect_identical(sum(!is.na(scores)), 20L)
+
+  from_fit <- ps_trunc(fit, method = "adaptive")
+  meta <- ps_trunc_meta(from_fit)
+
+  expect_equal(meta$lower_bound, 1 / gruber_c(20), tolerance = 1e-12)
+  expect_equal(meta$upper_bound, 1 - 1 / gruber_c(20), tolerance = 1e-12)
+  expect_identical(meta$n_obs, 22L)
+  expect_true(all(is.na(from_fit[c(3, 9)])))
+  expect_equal(
+    unname(as.numeric(from_fit)),
+    unname(bound_by_hand(scores, gruber_c(20))),
+    tolerance = 1e-12
+  )
+  expect_identical(meta, ps_trunc_meta(ps_trunc(scores, method = "adaptive")))
+})
+
 test_that("the adaptive bound reads a two-level multinomial fit as binary", {
   skip_if_not_installed("nnet")
 
@@ -497,9 +547,14 @@ test_that("the adaptive bound refuses a multinomial fit of three levels", {
 
   fit <- nnet::multinom(trt ~ x1 + x2, data = adaptive_fit_data, trace = FALSE)
 
-  expect_error(
-    ps_trunc(fit, method = "adaptive"),
-    class = "propensity_method_error"
+  # The refusal comes before the exposure is read off the fit, so nothing is
+  # announced even with announcements switched on.
+  withr::local_options(propensity.quiet = FALSE)
+  expect_no_message(
+    expect_error(
+      ps_trunc(fit, method = "adaptive"),
+      class = "propensity_method_error"
+    )
   )
   expect_propensity_error(ps_trunc(fit, method = "adaptive"))
 })

@@ -366,14 +366,21 @@ wt_trunc_adaptive_bounds <- function(present, lower, upper, call) {
   }
 
   check_wt_trunc_n_present(present, "adaptive", call = call)
-  n <- length(present)
 
   list(
     lower = NULL,
     upper = NULL,
     lower_value = NULL,
-    upper_value = sqrt(n) * log(n) / 5
+    upper_value = adaptive_weight_bound(length(present))
   )
+}
+
+# The weight bound of Gruber et al. (2022) for `n` observed units. It is shared
+# by `wt_trunc()`, which caps the weights at it, and `ps_trunc()`, which bounds
+# binary scores at its reciprocal on both sides and so caps unstabilized ATE
+# weights at the same value.
+adaptive_weight_bound <- function(n) {
+  sqrt(n) * log(n) / 5
 }
 
 wt_trunc_wt_bounds <- function(lower, upper, call) {

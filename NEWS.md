@@ -21,6 +21,16 @@
   result, after a first row that describes the untruncated weights. The
   default is a percentile grid at 0.99, 0.975, 0.95, and 0.90.
 
+* `ps_trunc()` gains `method = "adaptive"` for binary propensity scores. It
+  bounds the scores at `[1/c, 1 - 1/c]` with `c = sqrt(n) * log(n) / 5`, the
+  bound `wt_trunc(method = "adaptive")` places on the weights, where `n` counts
+  the scores present. For unstabilized ATE weights the two agree on every
+  weight above `c / (c - 1)`. `lower` and `upper` are ignored with a warning,
+  fewer than 15 scores are refused with an error of class
+  `propensity_range_error`, and a categorical score matrix or a multinomial
+  fit of three or more levels is refused with an error of class
+  `propensity_method_error`.
+
 * `ipw()` refuses weights bounded with `wt_trunc()` on every exposure route,
   with the dedicated error class `propensity_ipw_wt_truncated_error`. The
   message names the two supported alternatives: rebuild the weights without

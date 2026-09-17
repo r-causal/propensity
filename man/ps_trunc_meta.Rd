@@ -12,7 +12,8 @@ ps_trunc_meta(x)
 \value{
 A named list with truncation metadata, including:
 \itemize{
-\item \code{method} -- the truncation method used (\code{"ps"}, \code{"pctl"}, or \code{"cr"})
+\item \code{method} -- the truncation method used (\code{"ps"}, \code{"adaptive"},
+\code{"pctl"}, or \code{"cr"})
 \item \code{lower_bound}, \code{upper_bound} -- the applied bounds
 \item \code{truncated_idx} -- integer positions of values that were winsorized
 \item \code{n_obs} -- the number of observations those positions describe

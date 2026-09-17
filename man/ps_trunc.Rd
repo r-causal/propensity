@@ -6,7 +6,7 @@
 \usage{
 ps_trunc(
   .propensity,
-  method = c("ps", "pctl", "cr"),
+  method = c("ps", "adaptive", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -38,12 +38,16 @@ returns when no prediction type is named, carries predicted levels rather
 than probabilities and is refused with an error of class
 \code{propensity_df_class_column_error}.}
 
-\item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
+\item{method}{One of \code{"ps"}, \code{"adaptive"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
 \item \code{"ps"} (default): Truncate directly on propensity score values. Values
 outside \verb{[lower, upper]} are set to the nearest bound. For categorical
 exposures, applies symmetric truncation using \code{lower} as the threshold
 (delta) and renormalizes rows to sum to 1.
+\item \code{"adaptive"}: Truncate at \eqn{[1/c, 1 - 1/c]} with
+\eqn{c = \sqrt{n} \log(n) / 5} (Gruber et al., 2022), where \eqn{n} is
+the number of propensity scores present (binary exposures only). See
+\strong{The adaptive bound} below.
 \item \code{"pctl"}: Truncate at quantiles of the propensity score distribution.
 The \code{lower} and \code{upper} arguments specify quantile probabilities. For
 categorical exposures, quantiles are computed across all columns.
@@ -61,6 +65,8 @@ For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
 
 \item{lower, upper}{Bounds for truncation. Interpretation depends on \code{method}:
 \itemize{
+\item \code{method = "adaptive"}: Not used. Supplying either is ignored with a
+warning.
 \item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
 categorical exposures, \code{lower} is the truncation threshold delta
 (default: 0.01) and \code{upper} is ignored. That default deliberately differs
@@ -132,6 +138,45 @@ For \strong{binary exposures}, each propensity score \eqn{e_i} is bounded:
 
 For \strong{categorical exposures}, values below the threshold are set to the
 threshold and each row is renormalized to sum to 1.
+\subsection{The adaptive bound}{
+
+\code{method = "adaptive"} bounds a binary propensity score at
+\eqn{[1/c, 1 - 1/c]}, where \eqn{c = \sqrt{n} \log(n) / 5} is the weight
+bound of Gruber et al. (2022) and \eqn{n} counts the scores that are present,
+as in \code{\link[=wt_trunc]{wt_trunc()}}. At \eqn{n = 1000}, \eqn{c} is 43.7 and the bounds are
+0.023 and 0.977. The bound adapts to the sample size alone, loosening as
+\eqn{n} grows, and leaves the estimand alone. \code{ps_trim(method = "adaptive")}
+instead adapts to the estimated scores, tightening under poor overlap, and
+changes the estimand to the population it keeps.
+
+For \strong{unstabilized ATE weights} the bound is the weight bound written on the
+score scale. A treated unit's weight is \eqn{1/e}, so the floor \eqn{1/c}
+caps the treated weights at \eqn{c}; an untreated unit's weight is
+\eqn{1/(1 - e)}, so the ceiling \eqn{1 - 1/c} caps the untreated weights at
+\eqn{c}. \code{wt_ate()} on the result therefore gives the weights
+\code{wt_trunc(wt_ate(ps, .exposure), method = "adaptive")} gives, with one
+difference, provided every unit's exposure is observed. (A unit with a
+present score and a missing exposure counts toward \eqn{n} here but has no
+weight for \code{\link[=wt_trunc]{wt_trunc()}} to count, so the two bounds then differ.) The
+difference is this: a treated unit above \eqn{1 - 1/c} or an untreated unit below
+\eqn{1/c}, whose weight is already close to 1, is moved to that bound too,
+and its weight rises to \eqn{c / (c - 1)}. Every weight above
+\eqn{c / (c - 1)} is the same under either route. A lower bound alone would
+not do the same work, since no floor on \eqn{e} bounds an untreated unit's
+weight.
+
+For \strong{stabilized ATE weights} the equivalence does not carry over as it
+stands. Stabilizing multiplies each arm's weights by that arm's prevalence,
+so the treated weights are capped at \eqn{P(A = 1) c} and the untreated
+weights at \eqn{P(A = 0) c}, which agree only when the two arms are equally
+common.
+
+The bounds cross when \eqn{c < 2}, which holds for fewer than 15 scores, so
+\code{"adaptive"} needs at least 15 scores present and raises an error of class
+\code{propensity_range_error} otherwise. It is refused for categorical exposures
+with an error of class \code{propensity_method_error}: truncating a categorical
+score renormalizes each row, which moves scores the bound never reached, so
+the bound no longer caps the weights.
 
 \strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trunc} objects return
 plain numeric vectors. Once propensity scores are transformed (e.g., into
@@ -140,6 +185,8 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+}
+
 \subsection{Fitted models}{
 
 \code{.propensity} can be the fitted propensity score model instead of the scores
@@ -239,6 +286,10 @@ ps <- predict(fit, type = "response")
 ps_t <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
 ps_t
 
+# Bound at [1/c, 1 - 1/c], c = sqrt(n) log(n) / 5, which caps the
+# unstabilized ATE weights at c
+ps_trunc(ps, method = "adaptive")
+
 # Truncate at the 1st and 99th percentiles
 ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
 
@@ -262,6 +313,12 @@ if (rlang::is_installed("nnet")) {
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 with limited overlap in estimation of average treatment effects.
 \emph{Biometrika}, 96(1), 187--199.
+
+Gruber, S., Phillips, R. V., Lee, H., & van der Laan, M. J. (2022).
+Data-adaptive selection of the propensity score truncation level for
+inverse-probability-weighted and targeted maximum likelihood estimators of
+marginal point treatment effects. \emph{American Journal of Epidemiology},
+191(9), 1640--1651.
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.
