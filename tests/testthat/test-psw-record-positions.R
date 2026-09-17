@@ -273,3 +273,13 @@ test_that("rep_len() and vec_c() of one input drop each record's positions", {
     expect_fixture_positions_dropped(out, fixture, label)
   }
 })
+
+test_that("casting other data onto full-length weights drops each record's positions", {
+  for (label in names(positions_fixtures())) {
+    fixture <- positions_fixtures()[[label]]
+    w <- fixture$weights
+
+    out <- expect_silent(vctrs::vec_cast(rev(vec_data(w)), w))
+    expect_fixture_positions_dropped(out, fixture, label)
+  }
+})

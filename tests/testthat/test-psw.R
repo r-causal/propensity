@@ -967,17 +967,17 @@ test_that("the trimmed flag survives operations that drop the trimming record", 
   expect_true(is_ps_trimmed(w[integer(0)]))
 })
 
-test_that("casting to a psw keeps a length-matched trimming record and drops a shorter one silently", {
+test_that("casting to a psw drops the trimming record's positions silently", {
   w <- trimmed_psw()
   meta <- ps_trim_meta(w)
 
+  # A cast takes its whole type from `to`, whose record describes `to`'s own
+  # observations rather than the incoming data, even at the same length. That
+  # is nothing the caller can act on, so the positions go without comment.
   matched <- expect_silent(vec_cast(c(1, 2, 3, 4, 5), to = w))
   expect_s3_class(matched, "psw")
-  expect_identical(ps_trim_meta(matched), meta)
+  expect_positions_dropped(ps_trim_meta(matched), meta)
 
-  # A cast takes its whole type from `to`, whose record describes `to`'s own
-  # observations rather than the incoming data. A length it does not match is
-  # nothing the caller can act on, so the record's positions go without comment.
   shorter <- expect_silent(vec_cast(c(1, 2), to = w))
   expect_s3_class(shorter, "psw")
   expect_length(shorter, 2)

@@ -2064,10 +2064,11 @@ cast_to_psw <- function(x, to) {
   x <- vec_cast(vec_data(x), to = double())
   attributes(x) <- NULL
 
-  # A cast moves no unit, so it leaves the records as it found them. Outside
-  # subassignment, where base R keeps the target's own attributes regardless,
-  # `to` is a prototype and holds no observations for a record to describe.
-  carry_psw_metadata(x, to, in_place = TRUE)
+  # `to`'s records describe `to`'s units, not the data being cast, so their
+  # positions are dropped whatever the length. Subassignment casts the
+  # replacement too, but base `[<-` then keeps the target's own attributes, so
+  # the records the cast carries never reach its result.
+  carry_psw_metadata(x, to)
 }
 
 # A cast returns `x`'s values in `to`'s type, and a psw's type is the whole
