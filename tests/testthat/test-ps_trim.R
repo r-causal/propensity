@@ -2951,7 +2951,8 @@ test_that("ps_trim() trims a binomial additive fit like the equivalent glm", {
 
   gam_fit <- trim_gam_fit()
   glm_fit <- trim_binary_fit()
-  gam_scores <- as.numeric(fitted(gam_fit))
+  gam_scores <- predict(gam_fit, type = "response")
+  gam_scores <- setNames(as.vector(gam_scores), names(gam_scores))
   z <- trim_model_data$z
 
   trims <- list(

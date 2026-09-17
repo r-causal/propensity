@@ -1901,7 +1901,17 @@ predict_binary_ps <- function(model, newdata) {
 
 #' @export
 predict_binary_ps.default <- function(model, newdata) {
-  stats::predict(model, newdata = newdata, type = "response")
+  drop_1d_dim(stats::predict(model, newdata = newdata, type = "response"))
+}
+
+# Some classes, such as `mgcv::gam()`, report one value per unit as a
+# one-dimensional array. The score classes are built on plain doubles, so the
+# dimension is dropped and the unit names it carried are kept as names.
+drop_1d_dim <- function(x) {
+  if (length(dim(x)) != 1L) {
+    return(x)
+  }
+  stats::setNames(as.vector(x), names(x))
 }
 
 # The propensity score a fitted model reports, read according to the exposure it
@@ -1938,11 +1948,11 @@ extract_model_propensity <- function(
       call = call
     )
 
-    return(extract_binary_ps(model, call = call))
+    return(drop_1d_dim(extract_binary_ps(model, call = call)))
   }
 
   if (identical(exposure_type, "continuous")) {
-    return(extract_continuous_ps(model, call = call)$mu)
+    return(drop_1d_dim(extract_continuous_ps(model, call = call)$mu))
   }
 
   extract_categorical_ps(model, exposure_levels, call = call)

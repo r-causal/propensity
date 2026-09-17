@@ -2064,7 +2064,8 @@ test_that("ps_trunc() bounds a binomial additive fit like the equivalent glm", {
 
   gam_fit <- mgcv::gam(z ~ x1 + x2, data = gam_data, family = binomial())
   glm_fit <- glm(z ~ x1 + x2, data = gam_data, family = binomial())
-  gam_scores <- as.numeric(fitted(gam_fit))
+  gam_scores <- predict(gam_fit, type = "response")
+  gam_scores <- setNames(as.vector(gam_scores), names(gam_scores))
 
   truncs <- list(
     ps = list(method = "ps"),

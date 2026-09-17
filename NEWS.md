@@ -6,6 +6,12 @@
   now reads the probability of the second level, as the model route of
   `ps_trim()` does.
 
+* `ps_trim()` and `ps_trunc()` now read a binomial `mgcv::gam()` fit, whose
+  predicted probabilities are a one-dimensional array. Both previously failed
+  with an internal vctrs type error; the scores are now read as plain doubles
+  wherever a fitted model's scores are extracted, so the result matches the
+  equivalent binomial `glm()`, and `ps_refit()` refits such a trimmed score.
+
 * New `wt_trunc()` bounds extreme weights on the scale of the weights
   themselves, so it applies to weights for any exposure type, including the
   density-ratio weights of a continuous exposure. It offers four methods:
