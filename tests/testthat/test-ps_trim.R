@@ -513,16 +513,15 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
     ps_refit(fit)
 
   # A grouped summary slices the column once per group, and each slice holds
-  # scores the trimming record was not written for, so the record is dropped and
-  # says so. The summary itself reads values rather than positions.
-  summarized <- count_record_drops(
+  # scores the trimming record was not written for, so the record is dropped
+  # from the slices without comment. The summary itself reads values rather
+  # than positions.
+  out <- expect_silent(
     tibble(x, z, ps) |>
       group_by(trimmed = is_unit_trimmed(ps)) |>
       summarize(mean = mean(ps), .groups = "drop")
   )
-  expect_gt(summarized$drops, 0)
 
-  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
@@ -676,14 +675,10 @@ test_that("ps_trim() records how many observations its positions describe", {
   expect_equal(meta$n_obs, 5L)
 })
 
-test_that("slicing a ps_trim shorter drops the trimming record with a warning", {
+test_that("slicing a ps_trim shorter drops the trimming record silently", {
   x <- trim_record_fixture()
 
-  cnd <- expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trim_record_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_s3_class(sliced, "ps_trim")
   expect_equal(as.numeric(sliced), c(0.3, 0.5))
@@ -705,16 +700,13 @@ test_that("slicing a ps_trim shorter drops the trimming record with a warning", 
   )
 })
 
-test_that("filtering a ps_trim column drops the trimming record with a warning", {
+test_that("filtering a ps_trim column drops the trimming record silently", {
   skip_if_not_installed("dplyr")
 
   df <- data.frame(id = 1:5)
   df$ps <- trim_record_fixture()
 
-  expect_warning(
-    filtered <- dplyr::filter(df, id %in% 2:3),
-    class = "propensity_trim_record_warning"
-  )
+  filtered <- expect_silent(dplyr::filter(df, id %in% 2:3))
 
   expect_s3_class(filtered$ps, "ps_trim")
   expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
@@ -799,10 +791,7 @@ test_that("ps_refit() refuses a ps_trim whose record was dropped", {
     upper = 0.7
   )
 
-  expect_warning(
-    sliced <- vec_slice(trimmed, 1:20),
-    class = "propensity_trim_record_warning"
-  )
+  sliced <- expect_silent(vec_slice(trimmed, 1:20))
 
   expect_error(
     ps_refit(sliced, model),
@@ -925,10 +914,7 @@ test_that("combining ps_trim objects does not read trimmed units off the NAs", {
 
 test_that("a ps_trim that lost its record says so instead of reporting none", {
   x <- trim_record_fixture()
-  expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trim_record_warning"
-  )
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_match(vec_ptype_full(x), "trimmed 2 of", fixed = TRUE)
   expect_match(vec_ptype_full(sliced), "record dropped", fixed = TRUE)

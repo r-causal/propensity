@@ -317,29 +317,30 @@ undefined. Remove or impute the missing exposure values first.
 A \code{ps_trim} records which units were trimmed as positions among the
 observations it was written for, along with how many observations that was.
 Operations that hand this package the subscript re-index those positions onto
-the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, \code{\link[=rep]{rep()}}, and
-\code{\link[=na.omit]{na.omit()}} all return a record written for what they return, and a subscript
-naming a position more than once reports that unit at every place it now
-holds.
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=rep]{rep()}}, and \code{\link[=na.omit]{na.omit()}} all
+return a record written for what they return, and a subscript naming a
+position more than once reports that unit at every place it now holds.
+\code{\link[=unique]{unique()}} does the same when it can, as described below.
 
 Operations that change how many observations there are without supplying a
 subscript cannot re-index the record, and it is dropped rather than worked
 out from the values, since reading membership back from the \code{NA} pattern
 would report a propensity score that arrived missing as one this package
 removed. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}}, which is how filtering, joining, and grouped
-summaries in dplyr reach a column, is the usual route, and dropping the
-record there raises a warning of class \code{propensity_trim_record_warning}.
-Combining with \code{\link[=c]{c()}} drops it without comment, because concatenation appends
-one set of observations to another and the prototype it builds the result
-from holds no positions to lose. The values, the class, and the method and
-its cutoffs are untouched either way.
+verbs in dplyr reach a column, is the usual route, and combining two or more
+vectors with \code{\link[=c]{c()}} is another, because concatenation appends one set of
+observations to another. The record is dropped without comment on every
+route: most of these length changes build vectors the caller never holds,
+such as the pieces a grouped verb slices a column into or the rows a tibble
+slices off to print, so a warning would mostly describe something that is not
+the result. The values, the class, and the method and its cutoffs are
+untouched.
 
-Printing a \code{ps_trim} column inside a tibble takes the same route: a tibble
-prints the first few rows and slices the column to get them, so a column
-longer than what is shown raises the record-drop warning as it is printed.
-The warning is truthful, and it describes the vector built for the display
-rather than the column, which is unchanged. Print \code{as.numeric()} of the
-column, or widen the print with \code{options(pillar.print_max)}, to avoid it.
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, and that element
+stands for every unit holding the value. The record is re-indexed onto the
+result when all of those units share one status, and dropped otherwise: a
+trimmed score and one that arrived missing are both \code{NA}, so a vector holding
+both returns a single \code{NA} that neither status describes.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it

@@ -1,5 +1,22 @@
 # propensity 0.1.0.9000 (development version)
 
+* A `ps_trim` or `ps_trunc` vector now drops the positions in its record
+  without a warning whenever an operation through vctrs changes its length, as
+  a `psw` already did. A grouped `dplyr::mutate()` or `dplyr::summarise()`
+  that read such a column, and printing one in a tibble, previously warned
+  about the pieces built along the way even when the result kept its record.
+  `is_unit_trimmed()`, `is_unit_truncated()`, and `ps_refit()` still refuse a
+  result whose record was dropped, with an error of class
+  `propensity_missing_meta_error`.
+
+* `unique()` of a `ps_trim` or `ps_trunc` now drops the positions in its
+  record when it merges units whose status differs, such as a trimmed score and
+  one that arrived missing, or a score already at a truncation bound and one
+  moved onto it. It previously returned a record that left the merged units
+  out, so `is_unit_trimmed()` reported a trimmed `NA` as retained. When every
+  merged unit shares one status the record is re-indexed onto the result as
+  before.
+
 * Weights built from a calibrated propensity score now keep their calibration
   record (`ps_calib_meta`) through subsetting, `rep()`, and combining, as a
   `ps_calib` vector already did. The record names the calibration method and
@@ -2306,9 +2323,8 @@
   `dplyr::filter()`, joins, and group-wise summaries, returned a short column
   whose record still described the rows before the filter: `is_unit_trimmed()`
   on a two-element result answered with a four-element vector naming rows that
-  were no longer there. The record is now dropped when it cannot be re-indexed,
-  with a warning of class `propensity_trim_record_warning` or
-  `propensity_trunc_record_warning`, and `is_unit_trimmed()`,
+  were no longer there. The record is now dropped silently when it cannot be
+  re-indexed, and `is_unit_trimmed()`,
   `is_unit_truncated()`, and `ps_refit()` raise an error of class
   `propensity_missing_meta_error` on an object whose record is absent or was
   written for a different number of observations, rather than answer from stale

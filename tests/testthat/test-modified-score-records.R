@@ -104,17 +104,14 @@ test_that("unique() of a ps_trim re-indexes a record every kept unit agrees with
   expect_identical(is_unit_trimmed(out), c(TRUE, FALSE, FALSE))
 })
 
-test_that("unique() of a ps_trim drops a record a missing score shares with a trimmed one", {
+test_that("unique() of a ps_trim silently drops a record a missing score shares with a trimmed one", {
   # The one `NA` left stands for a score that arrived missing and for scores
   # the trimming removed, so no single status describes it.
   missing_first <- ps_trim(c(NA, 0.05, 0.5, 0.95), lower = 0.1, upper = 0.9)
   trimmed_first <- ps_trim(c(0.05, NA, 0.5, 0.95), lower = 0.1, upper = 0.9)
 
   for (x in list(missing_first, trimmed_first)) {
-    expect_warning(
-      out <- unique(x),
-      class = "propensity_trim_record_warning"
-    )
+    out <- expect_silent(unique(x))
 
     expect_s3_class(out, "ps_trim")
     expect_length(out, 2)
@@ -142,17 +139,14 @@ test_that("unique() of a ps_trunc re-indexes a record every kept unit agrees wit
   expect_identical(is_unit_truncated(out), c(TRUE, FALSE, TRUE))
 })
 
-test_that("unique() of a ps_trunc drops a record a bounded score shares with an untouched one", {
+test_that("unique() of a ps_trunc silently drops a record a bounded score shares with an untouched one", {
   # A score already at the bound and a score moved onto it collapse to one
   # value, and no single status describes it.
   untouched_first <- ps_trunc(c(0.1, 0.05, 0.5), lower = 0.1, upper = 0.9)
   bounded_first <- ps_trunc(c(0.05, 0.1, 0.5), lower = 0.1, upper = 0.9)
 
   for (x in list(untouched_first, bounded_first)) {
-    expect_warning(
-      out <- unique(x),
-      class = "propensity_trunc_record_warning"
-    )
+    out <- expect_silent(unique(x))
 
     expect_s3_class(out, "ps_trunc")
     expect_identical(vctrs::vec_data(out), c(0.1, 0.5))

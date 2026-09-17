@@ -249,29 +249,30 @@
 #' A `ps_trim` records which units were trimmed as positions among the
 #' observations it was written for, along with how many observations that was.
 #' Operations that hand this package the subscript re-index those positions onto
-#' the result: subsetting with `[`, [sort()], [unique()], [rep()], and
-#' [na.omit()] all return a record written for what they return, and a subscript
-#' naming a position more than once reports that unit at every place it now
-#' holds.
+#' the result: subsetting with `[`, [sort()], [rep()], and [na.omit()] all
+#' return a record written for what they return, and a subscript naming a
+#' position more than once reports that unit at every place it now holds.
+#' [unique()] does the same when it can, as described below.
 #'
 #' Operations that change how many observations there are without supplying a
 #' subscript cannot re-index the record, and it is dropped rather than worked
 #' out from the values, since reading membership back from the `NA` pattern
 #' would report a propensity score that arrived missing as one this package
 #' removed. [vctrs::vec_slice()], which is how filtering, joining, and grouped
-#' summaries in dplyr reach a column, is the usual route, and dropping the
-#' record there raises a warning of class `propensity_trim_record_warning`.
-#' Combining with [c()] drops it without comment, because concatenation appends
-#' one set of observations to another and the prototype it builds the result
-#' from holds no positions to lose. The values, the class, and the method and
-#' its cutoffs are untouched either way.
+#' verbs in dplyr reach a column, is the usual route, and combining two or more
+#' vectors with [c()] is another, because concatenation appends one set of
+#' observations to another. The record is dropped without comment on every
+#' route: most of these length changes build vectors the caller never holds,
+#' such as the pieces a grouped verb slices a column into or the rows a tibble
+#' slices off to print, so a warning would mostly describe something that is not
+#' the result. The values, the class, and the method and its cutoffs are
+#' untouched.
 #'
-#' Printing a `ps_trim` column inside a tibble takes the same route: a tibble
-#' prints the first few rows and slices the column to get them, so a column
-#' longer than what is shown raises the record-drop warning as it is printed.
-#' The warning is truthful, and it describes the vector built for the display
-#' rather than the column, which is unchanged. Print `as.numeric()` of the
-#' column, or widen the print with `options(pillar.print_max)`, to avoid it.
+#' [unique()] keeps one element for each distinct value, and that element
+#' stands for every unit holding the value. The record is re-indexed onto the
+#' result when all of those units share one status, and dropped otherwise: a
+#' trimmed score and one that arrived missing are both `NA`, so a vector holding
+#' both returns a single `NA` that neither status describes.
 #'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
@@ -1698,6 +1699,18 @@ reindex_trim_record <- function(meta, i) {
   meta
 }
 
+# A record that no longer describes the observations in front of it is dropped
+# rather than guessed at. Nothing in the values says which units a shorter or a
+# longer vector once trimmed, and reading membership back from the `NA` pattern
+# would report a propensity score that arrived missing as one this package
+# removed.
+#
+# The drop is silent. Most of the length changes that reach it are vectors
+# built along the way to a result, such as the pieces a grouped dplyr verb
+# slices a column into or the rows a tibble slices off to print, so a warning
+# would mostly describe something the caller never holds. A positional query on
+# the result refuses to answer from a record that is gone, which is where the
+# loss matters.
 drop_trim_record <- function(meta) {
   meta[["keep_idx"]] <- NULL
   meta[["trimmed_idx"]] <- NULL
@@ -1706,36 +1719,13 @@ drop_trim_record <- function(meta) {
   meta
 }
 
-# A record that no longer describes the observations in front of it is dropped
-# rather than guessed at. Nothing in the values says which units a shorter or a
-# longer vector once trimmed, and reading membership back from the `NA` pattern
-# would report a propensity score that arrived missing as one this package
-# removed.
-#
-# A record over no observations names no unit, so replacing it costs the caller
-# nothing and goes without comment. That is the record every prototype carries,
-# which is what concatenation builds its result from.
-discard_trim_record <- function(meta, n) {
-  recorded <- meta$n_obs
-
-  if (!is.null(recorded) && recorded > 0) {
-    warn(
-      c(
-        "Dropping the record of which units were trimmed.",
-        i = "The record describes {recorded} observation{?s} and this result
-             has {n}, so its positions do not describe them.",
-        i = "The values are unchanged and the result is still a
-             {.cls ps_trim}. Trim the propensity scores you want to work with
-             to get a record written for them."
-      ),
-      warning_class = "propensity_trim_record_warning",
-      # One of the routes here is vctrs' internal dispatch, whose call would be
-      # reported and names nothing the caller wrote, so no call is attributed.
-      call = NULL
-    )
-  }
-
-  drop_trim_record(meta)
+# Each unit's standing in a record that covers it: retained, trimmed, or
+# neither, which is a score that arrived missing.
+trim_unit_status <- function(meta) {
+  status <- rep("missing", meta$n_obs)
+  status[meta$keep_idx] <- "kept"
+  status[meta$trimmed_idx] <- "trimmed"
+  status
 }
 
 # A positional query reads its answer out of the record, so a record that does
@@ -1946,7 +1936,7 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
   new_meta <- if (length(rows) == nrow(result)) {
     carry_trim_record(meta, nrow(x), rows)
   } else {
-    discard_trim_record(meta, nrow(result))
+    drop_trim_record(meta)
   }
 
   attr(result, "ps_trim_meta") <- new_meta
@@ -2394,7 +2384,7 @@ carry_trim_record <- function(meta, n_obs, i) {
   if (record_covers(meta, n_obs)) {
     reindex_trim_record(meta, i)
   } else {
-    discard_trim_record(meta, length(i))
+    drop_trim_record(meta)
   }
 }
 
@@ -2421,7 +2411,23 @@ unique.ps_trim <- function(x, incomparables = FALSE, ...) {
   # `vec_unique_loc()` names the position each retained value came from, which
   # is the subscript re-indexing the record takes. Without this the restore
   # behind vctrs' own method sees only a shorter vector and drops the record.
-  x[vec_unique_loc(x)]
+  loc <- vec_unique_loc(x)
+  meta <- ps_trim_meta(x)
+
+  # A retained value stands for every unit holding it, and the record can speak
+  # for it only when all of those units share one standing. A trimmed score and
+  # one that arrived missing are both `NA`, so they merge into one element that
+  # neither status describes, and the record is dropped rather than left to
+  # report that element as one of them.
+  if (
+    !is.matrix(x) &&
+      record_covers(meta, length(x)) &&
+      !merged_units_agree(vec_data(x), trim_unit_status(meta))
+  ) {
+    return(new_trimmed_ps(vec_data(x)[loc], drop_trim_record(meta)))
+  }
+
+  x[loc]
 }
 
 #' @export
@@ -2505,7 +2511,7 @@ vec_restore.ps_trim <- function(x, to, ...) {
   if (length(data) > 0 && length(to) == 0) {
     meta <- drop_trim_record(meta)
   } else if (length(data) > 0 && !record_covers(meta, length(data))) {
-    meta <- discard_trim_record(meta, length(data))
+    meta <- drop_trim_record(meta)
   }
 
   new_trimmed_ps(data, ps_trim_meta = meta)

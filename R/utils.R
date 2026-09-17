@@ -260,6 +260,16 @@ record_covers <- function(meta, n) {
   !is.null(meta$n_obs) && meta$n_obs == n
 }
 
+# Whether every set of units `unique()` merges into one element shares a single
+# status. `vec_group_id()` groups values the way `vec_unique_loc()` keeps them,
+# missing values included, so each group is one element of the result.
+merged_units_agree <- function(values, status) {
+  groups <- vctrs::vec_group_id(values)
+  pairs <- data.frame(group = as.integer(groups), status = status)
+
+  vctrs::vec_unique_count(pairs) == attr(groups, "n")
+}
+
 # `[` knows the subscript, which is what re-indexing a record takes. Every
 # occurrence of a recorded position is mapped onto the position it now holds, so
 # a subscript naming a position twice reports that unit twice. `NA` names no

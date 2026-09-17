@@ -348,15 +348,14 @@ test_that("ps_trunc works with summarize(mean = mean(ps))", {
 
   # A grouped summary slices the column once per group, and each slice holds
   # scores the truncation record was not written for, so the record is dropped
-  # and says so. The summary itself reads values rather than positions.
-  summarized <- count_record_drops(
+  # from the slices without comment. The summary itself reads values rather
+  # than positions.
+  out <- expect_silent(
     tibble(x, z, ps) |>
       group_by(truncated = is_unit_truncated(ps)) |>
       summarize(mean = mean(ps), .groups = "drop")
   )
-  expect_gt(summarized$drops, 0)
 
-  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("truncated", "mean"))
   expect_type(out$mean, "double")
@@ -557,14 +556,10 @@ test_that("ps_trunc() records how many observations its positions describe", {
   expect_equal(meta$n_obs, 5L)
 })
 
-test_that("slicing a ps_trunc shorter drops the truncation record with a warning", {
+test_that("slicing a ps_trunc shorter drops the truncation record silently", {
   x <- trunc_record_fixture()
 
-  cnd <- expect_warning(
-    sliced <- vec_slice(x, 2:3),
-    class = "propensity_trunc_record_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  sliced <- expect_silent(vec_slice(x, 2:3))
 
   expect_s3_class(sliced, "ps_trunc")
   expect_equal(as.numeric(sliced), c(0.3, 0.5))
@@ -585,16 +580,13 @@ test_that("slicing a ps_trunc shorter drops the truncation record with a warning
   )
 })
 
-test_that("filtering a ps_trunc column drops the truncation record with a warning", {
+test_that("filtering a ps_trunc column drops the truncation record silently", {
   skip_if_not_installed("dplyr")
 
   df <- data.frame(id = 1:5)
   df$ps <- trunc_record_fixture()
 
-  expect_warning(
-    filtered <- dplyr::filter(df, id %in% 2:3),
-    class = "propensity_trunc_record_warning"
-  )
+  filtered <- expect_silent(dplyr::filter(df, id %in% 2:3))
 
   expect_s3_class(filtered$ps, "ps_trunc")
   expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))

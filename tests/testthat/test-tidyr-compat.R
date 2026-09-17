@@ -209,16 +209,16 @@ test_that("tidyr operations with NAs in ps_trim work correctly", {
   # pivot_wider should preserve the ps_trim structure. Widening spreads four
   # observations across two columns of four and fills the gaps, so neither
   # column holds the observations the trimming record was written for and each
-  # drops it.
-  pivoted <- count_record_drops(
+  # drops it without comment.
+  result <- expect_silent(
     tidyr::pivot_wider(
       df,
       names_from = group,
       values_from = weights
     )
   )
-  expect_gt(pivoted$drops, 0)
-  result <- pivoted$value
+  expect_null(ps_trim_meta(result$A)$n_obs)
+  expect_null(ps_trim_meta(result$B)$n_obs)
 
   # Check structure - 4 rows for 4 unique ids
   expect_equal(nrow(result), 4)
@@ -328,15 +328,17 @@ test_that("tidyr with all NA weights works", {
   # All values should be NA
   expect_true(all(is.na(df$weight)))
 
-  # Pivot should still work, dropping the trimming record with each new column
-  pivoted <- count_record_drops(
+  # Pivot should still work, silently dropping the trimming record from each
+  # new column
+  pivoted <- expect_silent(
     tidyr::pivot_wider(
       df,
       names_from = group,
       values_from = weight
     )
   )
-  expect_gt(pivoted$drops, 0)
+  expect_null(ps_trim_meta(pivoted$A)$n_obs)
+  expect_null(ps_trim_meta(pivoted$B)$n_obs)
 
-  expect_equal(nrow(pivoted$value), 4)
+  expect_equal(nrow(pivoted), 4)
 })

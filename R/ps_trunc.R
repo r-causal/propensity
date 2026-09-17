@@ -206,21 +206,28 @@
 #' A `ps_trunc` records which units were winsorized as positions among the
 #' observations it was written for, along with how many observations that was.
 #' Operations that hand this package the subscript re-index those positions onto
-#' the result: subsetting with `[`, [sort()], [unique()], and [rep()] all return
-#' a record written for what they return, and a subscript naming a position more
-#' than once reports that unit at every place it now holds.
+#' the result: subsetting with `[`, [sort()], and [rep()] all return a record
+#' written for what they return, and a subscript naming a position more than
+#' once reports that unit at every place it now holds. [unique()] does the same
+#' when it can, as described below.
 #'
 #' Operations that change how many observations there are without supplying a
 #' subscript cannot re-index the record, and it is dropped rather than worked
 #' out from the values, since a score that arrived equal to a bound is
 #' indistinguishable from one this function pinned there. [vctrs::vec_slice()],
-#' which is how filtering, joining, and grouped summaries in dplyr reach a
-#' column, is the usual route, and dropping the record there raises a warning
-#' of class `propensity_trunc_record_warning`. Combining with [c()] drops it
-#' without comment, because concatenation appends one set of observations to
-#' another and the prototype it builds the result from holds no positions to
-#' lose. The values, the class, and the method and its bounds are untouched
-#' either way.
+#' which is how filtering, joining, and grouped verbs in dplyr reach a column,
+#' is the usual route, and combining two or more vectors with [c()] is another,
+#' because concatenation appends one set of observations to another. The record
+#' is dropped without comment on every route, since most of these length changes
+#' build vectors the caller never holds, such as the pieces a grouped verb
+#' slices a column into. The values, the class, and the method and its bounds
+#' are untouched.
+#'
+#' [unique()] keeps one element for each distinct value, and that element
+#' stands for every unit holding the value. The record is re-indexed onto the
+#' result when all of those units share one status, and dropped otherwise: a
+#' score that arrived at a bound and one moved onto it merge into a single
+#' element that neither status describes.
 #'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trunc` by subassignment carries
@@ -1234,42 +1241,19 @@ reindex_trunc_record <- function(meta, i) {
   meta
 }
 
-drop_trunc_record <- function(meta) {
-  meta[["truncated_idx"]] <- NULL
-  meta[["n_obs"]] <- NULL
-
-  meta
-}
-
 # A record that no longer describes the observations in front of it is dropped
 # rather than guessed at. Nothing in the values says which units a shorter or a
 # longer vector once had winsorized: a score that arrived equal to a bound is
 # indistinguishable from one this package pinned there.
 #
-# A record over no observations names no unit, so replacing it costs the caller
-# nothing and goes without comment. That is the record every prototype carries,
-# which is what concatenation builds its result from.
-discard_trunc_record <- function(meta, n) {
-  recorded <- meta$n_obs
+# The drop is silent, for the reason a trimming record's is: most of the length
+# changes that reach it build vectors the caller never holds, and a positional
+# query on the result refuses to answer from a record that is gone.
+drop_trunc_record <- function(meta) {
+  meta[["truncated_idx"]] <- NULL
+  meta[["n_obs"]] <- NULL
 
-  if (!is.null(recorded) && recorded > 0) {
-    warn(
-      c(
-        "Dropping the record of which units were truncated.",
-        i = "The record describes {recorded} observation{?s} and this result
-             has {n}, so its positions do not describe them.",
-        i = "The values are unchanged and the result is still a
-             {.cls ps_trunc}. Truncate the propensity scores you want to work
-             with to get a record written for them."
-      ),
-      warning_class = "propensity_trunc_record_warning",
-      # One of the routes here is vctrs' internal dispatch, whose call would be
-      # reported and names nothing the caller wrote, so no call is attributed.
-      call = NULL
-    )
-  }
-
-  drop_trunc_record(meta)
+  meta
 }
 
 # `i` holds the old positions the result is built from, in the order it holds
@@ -1280,7 +1264,7 @@ carry_trunc_record <- function(meta, n_obs, i) {
   if (record_covers(meta, n_obs)) {
     reindex_trunc_record(meta, i)
   } else {
-    discard_trunc_record(meta, length(i))
+    drop_trunc_record(meta)
   }
 }
 
@@ -1511,7 +1495,7 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
   new_meta <- if (length(rows) == nrow(result)) {
     carry_trunc_record(meta, nrow(x), rows)
   } else {
-    discard_trunc_record(meta, nrow(result))
+    drop_trunc_record(meta)
   }
 
   attr(result, "ps_trunc_meta") <- new_meta
@@ -1889,7 +1873,26 @@ unique.ps_trunc <- function(x, incomparables = FALSE, ...) {
   # `vec_unique_loc()` names the position each retained value came from, which
   # is the subscript re-indexing the record takes. Without this the restore
   # behind vctrs' own method sees only a shorter vector and drops the record.
-  x[vec_unique_loc(x)]
+  loc <- vec_unique_loc(x)
+  meta <- ps_trunc_meta(x)
+
+  # A retained value stands for every unit holding it, and the record can speak
+  # for it only when all of those units share one standing. A score that arrived
+  # at a bound and one moved onto it merge into one element that neither status
+  # describes, so the record is dropped rather than left to report it as one of
+  # them.
+  if (
+    !is.matrix(x) &&
+      record_covers(meta, length(x)) &&
+      !merged_units_agree(
+        vec_data(x),
+        seq_along(x) %in% meta$truncated_idx
+      )
+  ) {
+    return(new_ps_trunc(vec_data(x)[loc], drop_trunc_record(meta)))
+  }
+
+  x[loc]
 }
 
 #' @export
@@ -1959,7 +1962,7 @@ vec_restore.ps_trunc <- function(x, to, ...) {
   if (length(data) > 0 && length(to) == 0) {
     meta <- drop_trunc_record(meta)
   } else if (length(data) > 0 && !record_covers(meta, length(data))) {
-    meta <- discard_trunc_record(meta, length(data))
+    meta <- drop_trunc_record(meta)
   }
 
   new_ps_trunc(data, meta)

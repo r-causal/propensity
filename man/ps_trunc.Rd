@@ -249,21 +249,28 @@ Remove or impute the missing exposure values first.
 A \code{ps_trunc} records which units were winsorized as positions among the
 observations it was written for, along with how many observations that was.
 Operations that hand this package the subscript re-index those positions onto
-the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, and \code{\link[=rep]{rep()}} all return
-a record written for what they return, and a subscript naming a position more
-than once reports that unit at every place it now holds.
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, and \code{\link[=rep]{rep()}} all return a record
+written for what they return, and a subscript naming a position more than
+once reports that unit at every place it now holds. \code{\link[=unique]{unique()}} does the same
+when it can, as described below.
 
 Operations that change how many observations there are without supplying a
 subscript cannot re-index the record, and it is dropped rather than worked
 out from the values, since a score that arrived equal to a bound is
 indistinguishable from one this function pinned there. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}},
-which is how filtering, joining, and grouped summaries in dplyr reach a
-column, is the usual route, and dropping the record there raises a warning
-of class \code{propensity_trunc_record_warning}. Combining with \code{\link[=c]{c()}} drops it
-without comment, because concatenation appends one set of observations to
-another and the prototype it builds the result from holds no positions to
-lose. The values, the class, and the method and its bounds are untouched
-either way.
+which is how filtering, joining, and grouped verbs in dplyr reach a column,
+is the usual route, and combining two or more vectors with \code{\link[=c]{c()}} is another,
+because concatenation appends one set of observations to another. The record
+is dropped without comment on every route, since most of these length changes
+build vectors the caller never holds, such as the pieces a grouped verb
+slices a column into. The values, the class, and the method and its bounds
+are untouched.
+
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, and that element
+stands for every unit holding the value. The record is re-indexed onto the
+result when all of those units share one status, and dropped otherwise: a
+score that arrived at a bound and one moved onto it merge into a single
+element that neither status describes.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trunc} by subassignment carries
