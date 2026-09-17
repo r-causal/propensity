@@ -151,7 +151,8 @@
 #' `propensity_range_error` otherwise. It is refused for categorical exposures
 #' with an error of class `propensity_method_error`: truncating a categorical
 #' score renormalizes each row, which moves scores the bound never reached, so
-#' the bound no longer caps the weights.
+#' the bound no longer caps the weights. A two-level `nnet::multinom()` fit is
+#' read as one binary score and accepted.
 #'
 #' **Arithmetic behavior**: Arithmetic operations on `ps_trunc` objects return
 #' plain numeric vectors. Once propensity scores are transformed (e.g., into
@@ -171,7 +172,13 @@
 #' bounding those values would. A model of a continuous exposure's conditional
 #' mean, such as a [stats::lm()] fit or a gaussian [stats::glm()], has no
 #' propensity score to bound and raises an error of class
-#' `propensity_model_family_error`.
+#' `propensity_model_family_error`. A dose has two routes instead: trim the
+#' dose model with `ps_trim(method = "density")`, which sets aside the units
+#' whose dose is implausible under the model, or build the weights with
+#' [wt_ate()] and bound them with [wt_trunc()], which keeps every unit. There
+#' is no density method here: a floor on a dose's conditional density is a
+#' bound on its unstabilized weights, the ones `wt_ate(stabilize = FALSE)`
+#' builds, which [wt_trunc()] already applies.
 #'
 #' The methods that read an exposure (`"cr"`, and every method on the
 #' categorical route) take it from the model when `.exposure` is not supplied,
@@ -222,6 +229,12 @@
 #' build vectors the caller never holds, such as the pieces a grouped verb
 #' slices a column into. The values, the class, and the method and its bounds
 #' are untouched.
+#'
+#' A combine drops the positions even when it is handed a single vector. `c()`
+#' of one `ps_trunc` returns it unchanged, record included, but
+#' `vctrs::vec_c(x)`, `dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`, and an
+#' ungrouped `dplyr::reframe()` rebuild the column, so a later
+#' [is_unit_truncated()] on the result refuses it.
 #'
 #' [unique()] keeps one element for each distinct value, or one row for each
 #' distinct row of a matrix of scores, and that element or row stands for every

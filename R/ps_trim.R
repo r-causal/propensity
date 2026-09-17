@@ -10,7 +10,7 @@
 #' @param .propensity A numeric vector of propensity scores in (0, 1) for binary
 #'   exposures, a matrix / data frame where each column gives the propensity
 #'   score for one level of a categorical exposure, or a fitted model (see
-#'   **Fitted models** and **Dose models** in Details). A data frame trimmed
+#'   **Fitted models** and **Trimming a dose model** in Details). A data frame trimmed
 #'   for a binary exposure is reduced to a single column: the second column of
 #'   a two column data frame, which is the probability of the second level in
 #'   the layout model predictions come in, and the first column otherwise. The
@@ -33,7 +33,10 @@
 #'     threshold delta) are trimmed.
 #'   * **`"adaptive"`**: Data-driven threshold that minimizes the asymptotic
 #'     variance of the IPW estimator (Crump et al., 2009). The `lower` and
-#'     `upper` arguments are ignored.
+#'     `upper` arguments are ignored. The threshold adapts to the estimated
+#'     scores, tightening under poor overlap, and the estimand becomes the
+#'     population it keeps. `ps_trunc(method = "adaptive")` instead adapts to
+#'     the sample size alone and keeps every unit.
 #'   * **`"pctl"`**: Quantile-based. Observations outside the `[lower, upper]`
 #'     quantiles of the propensity score distribution are trimmed. Defaults:
 #'     `lower = 0.05`, `upper = 0.95`.
@@ -63,7 +66,7 @@
 #'
 #'   `"density"` and `"resid"` need the residuals and the family of the model
 #'   that fit the exposure's conditional mean, so they accept only a dose model
-#'   (see **Dose models** in Details). They refuse a vector or matrix of values,
+#'   (see **Trimming a dose model** in Details). They refuse a vector or matrix of values,
 #'   a binomial or quasibinomial `glm`, and a `multinom` with an error of class
 #'   `propensity_method_error`. A dose model accepts only these two methods, and
 #'   refuses every other one, including the default `"ps"` when `method` is not
@@ -155,6 +158,12 @@
 #'   data-driven method available for categorical treatments.
 #' * Use `"density"` or `"resid"` for a continuous exposure, on its dose model.
 #'
+#' For a binary or categorical exposure, trimming and refitting is the first
+#' recourse when the analysis can accept a change of estimand. When every unit
+#' must be kept, bound the scores with [ps_trunc()] instead, for a binary
+#' exposure with `method = "adaptive"`, or bound the weights with
+#' [wt_trunc()].
+#'
 #' ## Typical workflow
 #'
 #' 1. Fit a propensity score model
@@ -179,7 +188,7 @@
 #' whose levels are ordered differently is still trimmed against the right
 #' column.
 #'
-#' ## Dose models
+#' ## Trimming a dose model
 #'
 #' For a continuous exposure, `.propensity` can be the model of the exposure's
 #' conditional mean: a [stats::lm()], a `glm` of the `gaussian()` family (or
@@ -188,21 +197,68 @@
 #' changes with its mean, such as `poisson()`, is refused with an error of
 #' class `propensity_model_family_error`. Only `"density"` and `"resid"` apply.
 #'
-#' Both read the fitted conditional mean `mu`, the spread `sigma` of the
-#' residuals under the family in `.density`, the standardized residual
-#' `z = (a - mu) / sigma`, and the conditional density `f = g(z) / sigma`,
-#' where `g` is the family's standardized density. `"density"` keeps the units
-#' whose `f` is at least its `lower` quantile. `"resid"` keeps those whose
-#' `|z|` is at most `upper`; for the symmetric unimodal families it accepts,
-#' that is the floor `g(upper) / sigma` on `f`, which is the threshold it
-#' records.
+#' For a dose, the generalized propensity score is the conditional density
+#' \eqn{f(a \mid x)} (Hirano and Imbens, 2004), and a unit whose observed dose
+#' has a small conditional density gets a large weight, as a unit with a
+#' propensity score near 0 does for a binary exposure. Both methods read the
+#' fitted conditional mean `mu`, the spread `sigma` of the residuals under the
+#' family in `.density`, the standardized residual `z = (a - mu) / sigma`, and
+#' the conditional density `f = g(z) / sigma`, where `g` is the family's
+#' standardized density. `"density"` keeps the units whose `f` is at least its
+#' `lower` quantile. `"resid"` keeps those whose `|z|` is at most `upper`; for
+#' the symmetric unimodal families it accepts, that is the floor
+#' `g(upper) / sigma` on `f`, which is the threshold it records. The trim is
+#' one-sided, at the low end of the density, since only a small density makes
+#' a large weight (Branson et al., 2024).
 #'
 #' The retained values are the conditional means, and the trimmed ones are
-#' `NA`. A unit with a missing mean or dose takes no part in the trim. The
-#' population a trimmed analysis describes is the units whose observed dose
-#' was plausible under the model, not the full sample. `.focal_level`,
-#' `.reference_level`, and their deprecated forms are refused with an error of
-#' class `propensity_focal_level_error`, since a dose has no levels.
+#' `NA`. A unit with a missing mean or dose takes no part in the trim.
+#' `.focal_level`, `.reference_level`, and their deprecated forms are refused
+#' with an error of class `propensity_focal_level_error`, since a dose has no
+#' levels.
+#'
+#' A trim changes the estimand. The analysis describes the units whose
+#' observed dose was plausible under the model, not the full sample, and which
+#' units those are depends on the threshold. Branson et al. (2024) define the
+#' trimmed dose response at each dose among the units whose conditional
+#' density at that dose exceeds the threshold, a population that changes with
+#' the dose; this trim is its sample analogue at each unit's own observed dose
+#' rather than the same population. A dose-response curve fit to the trimmed
+#' sample is a curve for the units it keeps.
+#'
+#' After trimming, [ps_refit()] refits the conditional mean on the retained
+#' rows and re-estimates the spread there under the recorded family, and
+#' [wt_ate()] builds the weights from the refit under the family and spread
+#' the record holds. [ipw()] refuses those weights, as it refuses every
+#' weight built from a trimmed score.
+#'
+#' The other way to hold down extreme weights for a dose is [wt_trunc()],
+#' which bounds the weights and keeps every unit; see **Truncating weights or
+#' trimming the density** there for the simulation results behind this
+#' summary. With a density family that fits the residuals, a density trim at
+#' `lower = 0.01` did not help: at an effective sample size of 64% of the
+#' sample, its interval covered 0.843, against 0.933 for the untrimmed
+#' weights under the same fixed-weight interval. A loose bound on the weights
+#' left that coverage where it was and lowered the root mean squared error.
+#' With heavy-tailed residuals read through a normal density, or a residual
+#' spread the model left out, the trim covered 0.979 to 0.989, against 0.618
+#' to 0.881 for the untrimmed weights and 0.644 to 0.906 for the bound,
+#' because it removed the units the misspecified density fit worst. Two
+#' cautions go with those numbers. The trim's intervals were computed on the
+#' trimmed sample, held the weights fixed, and were conservative, and its bias
+#' was measured against the effect in the full population, so part of that
+#' bias is the change of estimand. `"resid"` was not simulated; the results
+#' carry over to it only because a bound on the standardized residual is a
+#' floor on the conditional density.
+#'
+#' A family that fits the residuals is the better repair where it applies.
+#' Under heavy tails, [dens_t()] with 4 degrees of freedom at its default
+#' scale had about a third of the root mean squared error of the bounded
+#' normal weights and an M-estimation interval that covered 0.926 to 0.939
+#' with standard errors close to right, and it kept every unit. The trim's
+#' coverage was higher, but its interval was conservative. Check the family
+#' first; trim when the units at the low-density end are ones the analysis
+#' should not describe, and say so when reporting the estimand.
 #'
 #' ## Object behavior
 #'
@@ -268,6 +324,12 @@
 #' the result. The values, the class, and the method and its cutoffs are
 #' untouched.
 #'
+#' A combine drops the positions even when it is handed a single vector. `c()`
+#' of one `ps_trim` returns it unchanged, record included, but
+#' `vctrs::vec_c(x)`, `dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`, and an
+#' ungrouped `dplyr::reframe()` rebuild the column, so a later [ps_refit()] or
+#' [is_unit_trimmed()] on the result refuses it.
+#'
 #' [unique()] keeps one element for each distinct value, or one row for each
 #' distinct row of a matrix of scores, and that element or row stands for every
 #' unit holding the same scores. A matrix comes back as a matrix of the same
@@ -325,9 +387,17 @@
 #'   density specification), `keep_idx`, `trimmed_idx`, and `n_obs`.
 #'
 #' @references
+#' Branson, Z., Kennedy, E. H., Balakrishnan, S., & Wasserman, L. (2024).
+#' Causal effect estimation after propensity score trimming with continuous
+#' treatments. *arXiv preprint* arXiv:2309.00706.
+#'
 #' Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 #' with limited overlap in estimation of average treatment effects.
 #' *Biometrika*, 96(1), 187--199.
+#'
+#' Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
+#' treatments. In *Applied Bayesian Modeling and Causal Inference from
+#' Incomplete-Data Perspectives* (pp. 73--84).
 #'
 #' Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 #' assessing the feasibility of comparative effectiveness research.
@@ -501,8 +571,8 @@ ps_trim.default <- function(
         x = "It reads the conditional density of a continuous exposure, which
              needs the residuals and the family of the model that fit its
              conditional mean, and {.arg .propensity} carries neither.",
-        i = "Supply the fitted model of the exposure itself as
-             {.arg .propensity}."
+        i = "Supply the model of the exposure's conditional mean, such as an
+             {.fun lm} fit, as {.arg .propensity}."
       ),
       error_class = "propensity_method_error",
       call = call

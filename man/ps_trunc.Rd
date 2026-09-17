@@ -192,7 +192,8 @@ The bounds cross when \eqn{c < 2}, which holds for fewer than 15 scores, so
 \code{propensity_range_error} otherwise. It is refused for categorical exposures
 with an error of class \code{propensity_method_error}: truncating a categorical
 score renormalizes each row, which moves scores the bound never reached, so
-the bound no longer caps the weights.
+the bound no longer caps the weights. A two-level \code{nnet::multinom()} fit is
+read as one binary score and accepted.
 
 \strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trunc} objects return
 plain numeric vectors. Once propensity scores are transformed (e.g., into
@@ -212,7 +213,13 @@ read as one column per level. Those are the shapes \code{predict(fit, type = "re
 bounding those values would. A model of a continuous exposure's conditional
 mean, such as a \code{\link[stats:lm]{stats::lm()}} fit or a gaussian \code{\link[stats:glm]{stats::glm()}}, has no
 propensity score to bound and raises an error of class
-\code{propensity_model_family_error}.
+\code{propensity_model_family_error}. A dose has two routes instead: trim the
+dose model with \code{ps_trim(method = "density")}, which sets aside the units
+whose dose is implausible under the model, or build the weights with
+\code{\link[=wt_ate]{wt_ate()}} and bound them with \code{\link[=wt_trunc]{wt_trunc()}}, which keeps every unit. There
+is no density method here: a floor on a dose's conditional density is a
+bound on its unstabilized weights, the ones \code{wt_ate(stabilize = FALSE)}
+builds, which \code{\link[=wt_trunc]{wt_trunc()}} already applies.
 
 The methods that read an exposure (\code{"cr"}, and every method on the
 categorical route) take it from the model when \code{.exposure} is not supplied,
@@ -265,6 +272,12 @@ is dropped without comment on every route, since most of these length changes
 build vectors the caller never holds, such as the pieces a grouped verb
 slices a column into. The values, the class, and the method and its bounds
 are untouched.
+
+A combine drops the positions even when it is handed a single vector. \code{c()}
+of one \code{ps_trunc} returns it unchanged, record included, but
+\code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)}, and an
+ungrouped \code{dplyr::reframe()} rebuild the column, so a later
+\code{\link[=is_unit_truncated]{is_unit_truncated()}} on the result refuses it.
 
 \code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
 distinct row of a matrix of scores, and that element or row stands for every

@@ -307,7 +307,7 @@
     Condition <propensity_density_error>
       Error in `wt_ate()`:
       ! `sigma_method = "mle"` cannot be used with `.sigma`.
-      x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
+      x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the model of the exposure, and `.sigma` is a spread of your own that replaces it.
       i A "t" density is spread by its own estimator unless you ask for another, so `sigma_method = "mle"` is what it carries whether or not you wrote it.
       i Drop `.sigma` to estimate the scale under the "t" density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
 
@@ -318,7 +318,7 @@
     Condition <propensity_density_error>
       Error in `wt_ate()`:
       ! The scale of a "t" density cannot be estimated by maximum likelihood from these residuals.
-      x 9 of the 10 residuals of the propensity score model are exactly zero, and with 4 degrees of freedom that leaves the likelihood no maximum at a positive scale.
+      x 9 of the 10 residuals of the model of the exposure are exactly zero, and with 4 degrees of freedom that leaves the likelihood no maximum at a positive scale.
       i Use `sigma_method = "rms"`, or supply a spread with `.sigma`.
 
 # the numerator model refusals read as the refusals they are

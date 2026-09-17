@@ -24,7 +24,7 @@ ps_trim(
 \item{.propensity}{A numeric vector of propensity scores in (0, 1) for binary
 exposures, a matrix / data frame where each column gives the propensity
 score for one level of a categorical exposure, or a fitted model (see
-\strong{Fitted models} and \strong{Dose models} in Details). A data frame trimmed
+\strong{Fitted models} and \strong{Trimming a dose model} in Details). A data frame trimmed
 for a binary exposure is reduced to a single column: the second column of
 a two column data frame, which is the probability of the second level in
 the layout model predictions come in, and the first column otherwise. The
@@ -48,7 +48,10 @@ observations where \emph{any} column falls below \code{lower} (the symmetric
 threshold delta) are trimmed.
 \item \strong{\code{"adaptive"}}: Data-driven threshold that minimizes the asymptotic
 variance of the IPW estimator (Crump et al., 2009). The \code{lower} and
-\code{upper} arguments are ignored.
+\code{upper} arguments are ignored. The threshold adapts to the estimated
+scores, tightening under poor overlap, and the estimand becomes the
+population it keeps. \code{ps_trunc(method = "adaptive")} instead adapts to
+the sample size alone and keeps every unit.
 \item \strong{\code{"pctl"}}: Quantile-based. Observations outside the \verb{[lower, upper]}
 quantiles of the propensity score distribution are trimmed. Defaults:
 \code{lower = 0.05}, \code{upper = 0.95}.
@@ -79,7 +82,7 @@ predicted dose are trimmed. \code{upper} has no default.
 
 \code{"density"} and \code{"resid"} need the residuals and the family of the model
 that fit the exposure's conditional mean, so they accept only a dose model
-(see \strong{Dose models} in Details). They refuse a vector or matrix of values,
+(see \strong{Trimming a dose model} in Details). They refuse a vector or matrix of values,
 a binomial or quasibinomial \code{glm}, and a \code{multinom} with an error of class
 \code{propensity_method_error}. A dose model accepts only these two methods, and
 refuses every other one, including the default \code{"ps"} when \code{method} is not
@@ -216,6 +219,12 @@ groups have observed propensity scores.
 data-driven method available for categorical treatments.
 \item Use \code{"density"} or \code{"resid"} for a continuous exposure, on its dose model.
 }
+
+For a binary or categorical exposure, trimming and refitting is the first
+recourse when the analysis can accept a change of estimand. When every unit
+must be kept, bound the scores with \code{\link[=ps_trunc]{ps_trunc()}} instead, for a binary
+exposure with \code{method = "adaptive"}, or bound the weights with
+\code{\link[=wt_trunc]{wt_trunc()}}.
 }
 
 \subsection{Typical workflow}{
@@ -244,7 +253,7 @@ whose levels are ordered differently is still trimmed against the right
 column.
 }
 
-\subsection{Dose models}{
+\subsection{Trimming a dose model}{
 
 For a continuous exposure, \code{.propensity} can be the model of the exposure's
 conditional mean: a \code{\link[stats:lm]{stats::lm()}}, a \code{glm} of the \code{gaussian()} family (or
@@ -253,21 +262,68 @@ another family whose variance is constant), a \code{MASS::rlm()}, or an
 changes with its mean, such as \code{poisson()}, is refused with an error of
 class \code{propensity_model_family_error}. Only \code{"density"} and \code{"resid"} apply.
 
-Both read the fitted conditional mean \code{mu}, the spread \code{sigma} of the
-residuals under the family in \code{.density}, the standardized residual
-\code{z = (a - mu) / sigma}, and the conditional density \code{f = g(z) / sigma},
-where \code{g} is the family's standardized density. \code{"density"} keeps the units
-whose \code{f} is at least its \code{lower} quantile. \code{"resid"} keeps those whose
-\verb{|z|} is at most \code{upper}; for the symmetric unimodal families it accepts,
-that is the floor \code{g(upper) / sigma} on \code{f}, which is the threshold it
-records.
+For a dose, the generalized propensity score is the conditional density
+\eqn{f(a \mid x)} (Hirano and Imbens, 2004), and a unit whose observed dose
+has a small conditional density gets a large weight, as a unit with a
+propensity score near 0 does for a binary exposure. Both methods read the
+fitted conditional mean \code{mu}, the spread \code{sigma} of the residuals under the
+family in \code{.density}, the standardized residual \code{z = (a - mu) / sigma}, and
+the conditional density \code{f = g(z) / sigma}, where \code{g} is the family's
+standardized density. \code{"density"} keeps the units whose \code{f} is at least its
+\code{lower} quantile. \code{"resid"} keeps those whose \verb{|z|} is at most \code{upper}; for
+the symmetric unimodal families it accepts, that is the floor
+\code{g(upper) / sigma} on \code{f}, which is the threshold it records. The trim is
+one-sided, at the low end of the density, since only a small density makes
+a large weight (Branson et al., 2024).
 
 The retained values are the conditional means, and the trimmed ones are
-\code{NA}. A unit with a missing mean or dose takes no part in the trim. The
-population a trimmed analysis describes is the units whose observed dose
-was plausible under the model, not the full sample. \code{.focal_level},
-\code{.reference_level}, and their deprecated forms are refused with an error of
-class \code{propensity_focal_level_error}, since a dose has no levels.
+\code{NA}. A unit with a missing mean or dose takes no part in the trim.
+\code{.focal_level}, \code{.reference_level}, and their deprecated forms are refused
+with an error of class \code{propensity_focal_level_error}, since a dose has no
+levels.
+
+A trim changes the estimand. The analysis describes the units whose
+observed dose was plausible under the model, not the full sample, and which
+units those are depends on the threshold. Branson et al. (2024) define the
+trimmed dose response at each dose among the units whose conditional
+density at that dose exceeds the threshold, a population that changes with
+the dose; this trim is its sample analogue at each unit's own observed dose
+rather than the same population. A dose-response curve fit to the trimmed
+sample is a curve for the units it keeps.
+
+After trimming, \code{\link[=ps_refit]{ps_refit()}} refits the conditional mean on the retained
+rows and re-estimates the spread there under the recorded family, and
+\code{\link[=wt_ate]{wt_ate()}} builds the weights from the refit under the family and spread
+the record holds. \code{\link[=ipw]{ipw()}} refuses those weights, as it refuses every
+weight built from a trimmed score.
+
+The other way to hold down extreme weights for a dose is \code{\link[=wt_trunc]{wt_trunc()}},
+which bounds the weights and keeps every unit; see \strong{Truncating weights or
+trimming the density} there for the simulation results behind this
+summary. With a density family that fits the residuals, a density trim at
+\code{lower = 0.01} did not help: at an effective sample size of 64\% of the
+sample, its interval covered 0.843, against 0.933 for the untrimmed
+weights under the same fixed-weight interval. A loose bound on the weights
+left that coverage where it was and lowered the root mean squared error.
+With heavy-tailed residuals read through a normal density, or a residual
+spread the model left out, the trim covered 0.979 to 0.989, against 0.618
+to 0.881 for the untrimmed weights and 0.644 to 0.906 for the bound,
+because it removed the units the misspecified density fit worst. Two
+cautions go with those numbers. The trim's intervals were computed on the
+trimmed sample, held the weights fixed, and were conservative, and its bias
+was measured against the effect in the full population, so part of that
+bias is the change of estimand. \code{"resid"} was not simulated; the results
+carry over to it only because a bound on the standardized residual is a
+floor on the conditional density.
+
+A family that fits the residuals is the better repair where it applies.
+Under heavy tails, \code{\link[=dens_t]{dens_t()}} with 4 degrees of freedom at its default
+scale had about a third of the root mean squared error of the bounded
+normal weights and an M-estimation interval that covered 0.926 to 0.939
+with standard errors close to right, and it kept every unit. The trim's
+coverage was higher, but its interval was conservative. Check the family
+first; trim when the units at the low-density end are ones the analysis
+should not describe, and say so when reporting the estimand.
 }
 
 \subsection{Object behavior}{
@@ -335,6 +391,12 @@ such as the pieces a grouped verb slices a column into or the rows a tibble
 slices off to print, so a warning would mostly describe something that is not
 the result. The values, the class, and the method and its cutoffs are
 untouched.
+
+A combine drops the positions even when it is handed a single vector. \code{c()}
+of one \code{ps_trim} returns it unchanged, record included, but
+\code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)}, and an
+ungrouped \code{dplyr::reframe()} rebuild the column, so a later \code{\link[=ps_refit]{ps_refit()}} or
+\code{\link[=is_unit_trimmed]{is_unit_trimmed()}} on the result refuses it.
 
 \code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
 distinct row of a matrix of scores, and that element or row stands for every
@@ -413,9 +475,17 @@ if (rlang::is_installed("nnet")) {
 
 }
 \references{
+Branson, Z., Kennedy, E. H., Balakrishnan, S., & Wasserman, L. (2024).
+Causal effect estimation after propensity score trimming with continuous
+treatments. \emph{arXiv preprint} arXiv:2309.00706.
+
 Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 with limited overlap in estimation of average treatment effects.
 \emph{Biometrika}, 96(1), 187--199.
+
+Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
+treatments. In \emph{Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives} (pp. 73--84).
 
 Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
 assessing the feasibility of comparative effectiveness research.

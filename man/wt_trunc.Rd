@@ -146,6 +146,59 @@ To see how much a truncation changed the effective sample size, add the
 weights before and after it to a data frame as separate columns and pass
 both to \code{halfmoon::check_ess()}.
 }
+
+\subsection{Truncating weights or trimming the density}{
+
+For a continuous exposure there are two ways to hold down extreme weights.
+\code{wt_trunc()} bounds the weights once they are built and keeps every unit.
+\code{\link[=ps_trim]{ps_trim()}} with \code{method = "density"} or \code{method = "resid"} sets aside the
+units whose observed dose is implausible under the dose model, and
+\code{\link[=ps_refit]{ps_refit()}} refits the model on the units that remain; see \strong{Trimming a
+dose model} in \code{\link[=ps_trim]{ps_trim()}}. Both change the estimand. A fixed bound
+introduces a bias that does not vanish however large the sample, while a
+bound that loosens with the sample, as \code{"adaptive"} does, leaves the
+estimand alone in the limit. A trim describes only the units it keeps.
+\code{wt_trunc()} applies to weights from any density family, and so does
+\code{"density"}; \code{"resid"} accepts the normal, t, and Laplace families only.
+\code{\link[=ipw]{ipw()}} refuses the weights from either tool.
+
+A simulation study run for this package (samples of 1000, 1000
+replications, a correctly specified mean for the dose) found that which
+tool helps depends on whether the density family fits the residuals. The
+coverage figures below are for a sandwich interval that holds the weights
+fixed, unless stated. With normal residuals, a normal density, and an
+effective sample size of 64\% of the sample, the \code{"adaptive"} bound moved almost no
+weight and covered 0.933, as the untruncated weights did under the same
+interval. The M-estimation interval on the untruncated weights covered
+0.863, so the gain in coverage there comes from the interval, not the
+bound. What the bound bought was precision: a root mean squared error of
+0.084 against 0.096, for a bias of 0.015 (3\% of the effect) against 0.012.
+At an effective sample size of 53\% it covered 0.847 against 0.839
+untruncated, and at 81\% it changed nothing. A density trim at
+\code{lower = 0.01} covered 0.843 at 64\%, below the untruncated weights.
+
+With t(4) or Laplace residuals, or a residual spread that varied with a
+covariate, the normal density fit some units badly. The bound then helped
+little (coverage 0.822, 0.906, and 0.644, against 0.788, 0.881, and 0.618
+untruncated), while the 1\% density trim covered \strong{0.989}, \strong{0.980}, and
+\strong{0.979}, because it removed the units that density fit worst. The trim's
+intervals were computed on the trimmed sample and were conservative, and
+its bias was measured against the effect in the full population, so part
+of that bias is the change of estimand. The \code{"resid"} method was not
+simulated; these results carry over to it only because a bound on the
+standardized residual is a floor on the conditional density.
+
+Neither tool is the first step. Under the same heavy-tailed residuals,
+\code{dens_t(4)} at its default scale covered 0.926 to 0.939 with the
+M-estimation interval, whose standard errors were close to right, with
+about a third of the root mean squared error of the bounded normal
+weights, and kept every unit. So first check the density family against the
+residuals, for instance by comparing the weights to those of a
+\code{\link[=dens_kernel]{dens_kernel()}} density or a heavier tail. If the weights are still heavy
+under a family that fits, bound them with \code{wt_trunc()}. Trim the dose model
+when the units at the low-density end are ones the analysis should not
+describe, and state the population the trimmed analysis describes.
+}
 }
 \examples{
 set.seed(1)

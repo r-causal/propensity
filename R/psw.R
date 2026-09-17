@@ -117,6 +117,13 @@
 #' agreement rule above: two calibration records agree when they name the same
 #' method and smoothing.
 #'
+#' `c()` of a single `psw` returns it unchanged, with every record. A combine
+#' through vctrs drops the positional records even when it is handed a single
+#' input: `vctrs::vec_c(x)`, `dplyr::bind_rows(df)`, `vctrs::vec_rbind(df)`,
+#' and an ungrouped `dplyr::reframe()` all rebuild the column, so a later
+#' [is_unit_trimmed()], [is_unit_truncated()], or [is_unit_wt_truncated()] on
+#' the result refuses it.
+#'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
 #' Two kinds of attribute hold one value per observation and so cannot be
 #' re-indexed for a subset: a `stabilization_score` with more than one value,

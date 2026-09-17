@@ -856,7 +856,7 @@ t_sigma_mle <- function(residuals, df, call = rlang::caller_env()) {
       c(
         "The scale of a {.val t} density cannot be estimated by maximum
          likelihood from these residuals.",
-        x = "{n_zero} of the {n} residuals of the propensity score model
+        x = "{n_zero} of the {n} residuals of the model of the exposure
              {?is/are} exactly zero, and with {df} degrees of freedom that
              leaves the likelihood no maximum at a positive scale.",
         i = "Use {.code sigma_method = \"rms\"}, or supply a spread with
@@ -902,7 +902,7 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
       "{.code sigma_method = \"mle\"} cannot be used with {.arg .sigma}.",
       x = "{.code sigma_method = \"mle\"} estimates the scale of the
            {.val {family}} conditional density from the residuals of the
-           propensity score model, and {.arg .sigma} is a spread of your own
+           model of the exposure, and {.arg .sigma} is a spread of your own
            that replaces it.",
       i = "A {.val {family}} density is spread by its own estimator unless you
            ask for another, so {.code sigma_method = \"mle\"} is what it

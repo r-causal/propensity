@@ -1,55 +1,95 @@
 # propensity 0.1.0.9000 (development version)
 
-* `unique()` of a `ps_trim` or `ps_trunc` matrix of categorical propensity
-  scores now keeps one row for each distinct row and returns a matrix of the
-  same class, with its column names and a trimming or truncation record
-  re-indexed onto the kept rows. It previously indexed the matrix as one long
-  vector and returned a plain numeric vector taken from the first column. As
-  for a vector, the record is dropped when merged rows differ in status, such
-  as a trimmed row and a row that arrived missing.
+* New `wt_trunc()` bounds extreme weights on the scale of the weights
+  themselves, so it applies to weights for any exposure type, including the
+  density-ratio weights of a continuous exposure. It offers four methods:
+  `"adaptive"` (the default), an upper bound of `sqrt(n) * log(n) / 5` after
+  Gruber et al. (2022), where `n` counts the weights present; `"wt"`, bounds
+  given as weight values; `"pctl"`, bounds read at sample quantiles; and
+  `"count"`, which bounds a given number of the most extreme weights at the
+  next one in. Each bounds only the upper tail unless `lower` is supplied. The
+  result keeps every attribute of the weights, gains the estimand label
+  `"; weights truncated"`, and records the method, the bounds as given and as
+  applied, and the weights moved, which the printed weights report. The new
+  `is_wt_truncated()` and `is_unit_wt_truncated()` read that record, apart
+  from `is_ps_truncated()` and `is_unit_truncated()`, which describe a
+  truncated propensity score. Weights truncated at different bounds do not
+  combine. Weights built from a trimmed, truncated, or calibrated score can be
+  truncated too, and carry both records. The documentation of `wt_trunc()`
+  and `ps_trim()` compares bounding a dose's weights with trimming its dose
+  model, using the results of a simulation study, and says when to use each.
 
-* A `ps_trim` or `ps_trunc` vector now drops the positions in its record
-  without a warning whenever an operation through vctrs changes its length, as
-  a `psw` already did. A grouped `dplyr::mutate()` or `dplyr::summarise()`
-  that read such a column, and printing one in a tibble, previously warned
-  about the pieces built along the way even when the result kept its record.
-  `is_unit_trimmed()`, `is_unit_truncated()`, and `ps_refit()` still refuse a
-  result whose record was dropped, with an error of class
-  `propensity_missing_meta_error`.
+* New `wt_trunc_sensitivity()` truncates weights with `wt_trunc()` at each
+  bound in a grid and returns a tibble of the bounds as given and as applied,
+  the number of weights moved, and the range, range ratio, and mean of the
+  result, after a first row that describes the untruncated weights. The
+  default is a percentile grid at 0.99, 0.975, 0.95, and 0.90.
 
-* `unique()` of a `ps_trim` or `ps_trunc` now drops the positions in its
-  record when it merges units whose status differs, such as a trimmed score and
-  one that arrived missing, or a score already at a truncation bound and one
-  moved onto it. It previously returned a record that left the merged units
-  out, so `is_unit_trimmed()` reported a trimmed `NA` as retained. When every
-  merged unit shares one status the record is re-indexed onto the result as
-  before.
+* `ps_trim()` now trims a model of a continuous exposure on the scale of its
+  conditional density. An `lm`, a `glm` whose variance is constant, a
+  `MASS::rlm()`, or an `mgcv::gam()` of the dose can be trimmed with
+  `method = "density"`, which sets aside the units whose conditional density at
+  their observed dose falls below a quantile floor (`lower`, default 0.01), or
+  with `method = "resid"`, which sets aside the units more than `upper` spreads
+  from their predicted dose. The new `.density` and `.sigma` arguments choose
+  the density family and the spread, which is otherwise the one the family
+  estimates from the residuals, as in `wt_ate()`. The trim record keeps the
+  realized floor, the spread, how the spread was found, and the family, and
+  trims that differ in any of them do not combine. A dose model asked for any
+  other method, including the default `"ps"`, a model of a probability asked
+  for either density method, and a level argument on a dose model are refused
+  with informative errors. `ps_refit()` refits a trimmed dose model's
+  conditional mean on the retained rows and re-estimates its spread there
+  under the recorded family, keeping a spread the caller supplied. `wt_ate()`
+  and `wt_cens()` build weights from the trim under the family and spread its
+  record holds, refuse a `.density` that disagrees with the record or any
+  `.sigma`, and label the result as trimmed.
 
-* Weights built from a calibrated propensity score now keep their calibration
-  record (`ps_calib_meta`) through subsetting, `rep()`, and combining, as a
-  `ps_calib` vector already did. The record names the calibration method and
-  whether it was smoothed rather than any unit, but it was dropped along with
-  the positional trimming and truncation records whenever the length changed,
-  while the weights stayed marked as calibrated. Combining weights whose
-  calibration records disagree drops the record with a warning of class
-  `propensity_metadata_conflict_warning`, and a record only one input carries
-  is kept.
+* `ps_trunc()` gains `method = "adaptive"` for binary propensity scores. It
+  bounds the scores at `[1/c, 1 - 1/c]` with `c = sqrt(n) * log(n) / 5`, the
+  bound `wt_trunc(method = "adaptive")` places on the weights, where `n` counts
+  the scores present. For unstabilized ATE weights the two agree on every
+  weight above `c / (c - 1)`. `lower` and `upper` are ignored with a warning,
+  fewer than 15 scores are refused with an error of class
+  `propensity_range_error`, a two-level `nnet::multinom()` fit is read as a
+  binary score, and a categorical score matrix or a multinomial fit of three
+  or more levels is refused with an error of class `propensity_method_error`.
 
-* A `ps_trim` or `ps_trunc` vector restored against a zero-length prototype
-  now drops the positions in its record, keeping its class and the description
-  of the trimming or truncation. Combining reordered pieces with
-  `vctrs::list_unchop(ptype = )` or `vctrs::vec_c(.ptype = )` previously kept a
-  record naming the wrong units; `is_unit_trimmed()`, `is_unit_truncated()`,
-  and `ps_refit()` now refuse such a result with an error of class
-  `propensity_missing_meta_error`. `vctrs::vec_c()` and `vctrs::list_unchop()`
-  of a single vector drop the positions as well, while `c()` of a single
-  vector returns it unchanged.
+* `ipw()` refuses weights bounded with `wt_trunc()` on every exposure route,
+  with the dedicated error class `propensity_ipw_wt_truncated_error`. The
+  message names the two supported alternatives: rebuild the weights without
+  the truncation and report the M-estimation interval, or report a
+  fixed-weight sandwich that conditions on the bound. Weights from a trimmed
+  dose model are refused as other trimmed weights are.
 
-* `c()` of a single `psw` now returns it unchanged, keeping its trimming,
-  truncation, and weight truncation records, as `c()` already
-  did for a single `ps_trim` or `ps_trunc` vector. Every other combine,
-  including `vctrs::vec_c()` and `vctrs::list_unchop()` of a single `psw`,
-  still drops those records.
+* Breaking change: weights for a continuous exposure can no longer be built
+  from a trimmed, truncated, or calibrated score. A conditional mean whose
+  values happened to fall in (0, 1) could be passed through `ps_trim()`,
+  `ps_trunc()`, or `ps_calibrate()` as if it were a propensity score and then
+  weighted with `wt_ate()` or `wt_cens()`, which selected or moved units by
+  their predicted dose and said nothing about positivity. Those six weight
+  methods now refuse an exposure they resolve as continuous, including one
+  resolved from `exposure_type = "auto"`, with an error of class
+  `propensity_modified_continuous_error`. A model of a conditional mean, a
+  least squares fit or a `glm` of any family but the binomial ones, is refused
+  by `ps_trunc()` and by `ps_refit()` on trimmed scores with an error of class
+  `propensity_model_family_error`, where `ps_refit()` previously refit
+  whatever model it was handed. `ps_trim()` refuses `method = "density"` and
+  `method = "resid"` for a vector of values with an error of class
+  `propensity_method_error`, since a vector carries neither the residuals nor
+  the family a density is read from. Each refusal names the two routes for a
+  dose, both described above: trim the dose model with
+  `ps_trim(method = "density")`, or build its weights with `wt_ate()` and
+  bound them with `wt_trunc()`.
+
+  A data frame of scores now behaves as the vector it holds does. A trimmed,
+  truncated, or calibrated column in a data frame passed to any `wt_*()`
+  function reached the weights as plain scores, so for a binary exposure its
+  trimming, truncation, or calibration record was silently dropped, along with
+  the warning that a trimmed score was not refit. The column now keeps its
+  record for a binary exposure, and is refused for a continuous exposure as
+  the vector is. On the modified-score methods, an `exposure_type` naming
+  several types is reported as a malformed argument whatever the exposure.
 
 * Breaking change: `ps_trunc(method = "ps")` now mirrors a bound supplied
   alone. `lower` alone bounds a binary score at `[lower, 1 - lower]`, and
@@ -61,10 +101,15 @@
   Each supplied bound must be a single number strictly between 0 and 1; one
   outside that interval is refused with an error of class
   `propensity_range_error`, and one of any other length with an error of class
-  `propensity_length_error`.
-  The default threshold for a categorical score matrix rises from 0.01 to 0.1,
-  matching the binary default and `ps_trim()`, so a matrix of ten or more
-  columns now needs an explicit `lower`.
+  `propensity_length_error`. The default threshold for a categorical score
+  matrix rises from 0.01 to 0.1, matching the binary default and `ps_trim()`,
+  so a matrix of ten or more columns now needs an explicit `lower`.
+
+* The marginal numerator of a `dens_kernel()` density is now fit only on the
+  units that have a conditional mean. A unit whose fitted mean was missing but
+  whose dose was present already took no part in the numerator's center and
+  spread and got no weight, yet its standardized dose still entered the kernel
+  fit, which changed the weights of every other unit.
 
 * `ps_refit()` now refits a binary score trimmed from a two-level
   `nnet::multinom()` fit. It previously failed with an error from
@@ -93,102 +138,57 @@
   `ps_refit()` reads, and combining an inverted trim with one that is not
   inverted falls back to numeric with a warning.
 
-* New `wt_trunc()` bounds extreme weights on the scale of the weights
-  themselves, so it applies to weights for any exposure type, including the
-  density-ratio weights of a continuous exposure. It offers four methods:
-  `"adaptive"` (the default), an upper bound of `sqrt(n) * log(n) / 5` after
-  Gruber et al. (2022); `"wt"`, bounds given as weight values; `"pctl"`, bounds
-  read at sample quantiles; and `"count"`, which bounds a given number of the
-  most extreme weights at the next one in. Each bounds only the upper tail
-  unless `lower` is supplied. The result keeps every attribute of the weights,
-  gains the estimand label `"; weights truncated"`, and records the method,
-  the bounds as given and as applied, and the weights moved, which the printed
-  weights report. The new `is_wt_truncated()` and `is_unit_wt_truncated()`
-  read that record, apart from `is_ps_truncated()` and `is_unit_truncated()`,
-  which describe a truncated propensity score. Weights truncated at different
-  bounds do not combine.
+* A `ps_trim` or `ps_trunc` vector now drops the positions in its record
+  without a warning whenever an operation through vctrs changes its length, as
+  a `psw` already did. A grouped `dplyr::mutate()` or `dplyr::summarise()`
+  that read such a column, and printing one in a tibble, previously warned
+  about the pieces built along the way even when the result kept its record.
+  `is_unit_trimmed()`, `is_unit_truncated()`, and `ps_refit()` still refuse a
+  result whose record was dropped, with an error of class
+  `propensity_missing_meta_error`.
 
-* New `wt_trunc_sensitivity()` truncates weights with `wt_trunc()` at each
-  bound in a grid and returns a tibble of the bounds as given and as applied,
-  the number of weights moved, and the range, range ratio, and mean of the
-  result, after a first row that describes the untruncated weights. The
-  default is a percentile grid at 0.99, 0.975, 0.95, and 0.90.
+* Combining drops the positions in a record even when it is handed a single
+  vector, unless the combine is base `c()`. `c()` of a single `ps_trim`,
+  `ps_trunc`, or `psw` returns it unchanged, keeping its trimming, truncation,
+  and weight truncation records; `c()` of a single `psw` previously dropped
+  them. `vctrs::vec_c(x)`, `vctrs::list_unchop()`, `dplyr::bind_rows(df)`,
+  `vctrs::vec_rbind(df)`, and an ungrouped `dplyr::reframe()` of a single such
+  column drop the positions, so a later `ps_refit()`, `is_unit_trimmed()`,
+  `is_unit_truncated()`, or `is_unit_wt_truncated()` refuses the result.
 
-* `ps_trunc()` gains `method = "adaptive"` for binary propensity scores. It
-  bounds the scores at `[1/c, 1 - 1/c]` with `c = sqrt(n) * log(n) / 5`, the
-  bound `wt_trunc(method = "adaptive")` places on the weights, where `n` counts
-  the scores present. For unstabilized ATE weights the two agree on every
-  weight above `c / (c - 1)`. `lower` and `upper` are ignored with a warning,
-  fewer than 15 scores are refused with an error of class
-  `propensity_range_error`, and a categorical score matrix or a multinomial
-  fit of three or more levels is refused with an error of class
-  `propensity_method_error`.
+* A `ps_trim` or `ps_trunc` vector restored against a zero-length prototype
+  now drops the positions in its record, keeping its class and the description
+  of the trimming or truncation. Combining reordered pieces with
+  `vctrs::list_unchop(ptype = )` or `vctrs::vec_c(.ptype = )` previously kept a
+  record naming the wrong units; `is_unit_trimmed()`, `is_unit_truncated()`,
+  and `ps_refit()` now refuse such a result with an error of class
+  `propensity_missing_meta_error`.
 
-* `ipw()` refuses weights bounded with `wt_trunc()` on every exposure route,
-  with the dedicated error class `propensity_ipw_wt_truncated_error`. The
-  message names the two supported alternatives: rebuild the weights without
-  the truncation and report the M-estimation interval, or report a
-  fixed-weight sandwich that conditions on the bound.
+* `unique()` of a `ps_trim` or `ps_trunc` now drops the positions in its
+  record when it merges units whose status differs, such as a trimmed score and
+  one that arrived missing, or a score already at a truncation bound and one
+  moved onto it. It previously returned a record that left the merged units
+  out, so `is_unit_trimmed()` reported a trimmed `NA` as retained. When every
+  merged unit shares one status the record is re-indexed onto the result as
+  before.
 
-* `ps_trim()` now trims a model of a continuous exposure on the scale of its
-  conditional density. A `lm`, a `glm` whose variance is constant, a
-  `MASS::rlm()`, or an `mgcv::gam()` of the dose can be trimmed with
-  `method = "density"`, which sets aside the units whose conditional density at
-  their observed dose falls below a quantile floor (`lower`, default 0.01), or
-  with `method = "resid"`, which sets aside the units more than `upper` spreads
-  from their predicted dose. The new `.density` and `.sigma` arguments choose
-  the density family and the spread, which is otherwise the one the family
-  estimates from the residuals, as in `wt_ate()`. The trim record keeps the
-  realized floor, the spread, how the spread was found, and the family, and
-  trims that differ in any of them do not combine. A dose model asked for any
-  other method, a model of a probability asked for either density method, and a
-  level argument on a dose model are refused with informative errors.
-  `ps_refit()` refits a trimmed dose model's conditional mean on the retained
-  rows and re-estimates its spread there under the recorded family, keeping a
-  spread the caller supplied. `wt_ate()` and `wt_cens()` build weights from the
-  trim under the family and spread its record holds, refuse a `.density` that
-  disagrees with the record or any `.sigma`, and label the result as trimmed;
-  `ipw()` refuses those weights as it refuses other trimmed weights.
+* `unique()` of a `ps_trim` or `ps_trunc` matrix of categorical propensity
+  scores now keeps one row for each distinct row and returns a matrix of the
+  same class, with its column names and a trimming or truncation record
+  re-indexed onto the kept rows. It previously indexed the matrix as one long
+  vector and returned a plain numeric vector taken from the first column. As
+  for a vector, the record is dropped when merged rows differ in status, such
+  as a trimmed row and a row that arrived missing.
 
-* The marginal numerator of a `dens_kernel()` density is now fit only on the
-  units that have a conditional mean. A unit whose fitted mean was missing but
-  whose dose was present already took no part in the numerator's center and
-  spread and got no weight, yet its standardized dose still entered the kernel
-  fit, which changed the weights of every other unit.
-
-* Weights for a continuous exposure can no longer be built from a trimmed,
-  truncated, or calibrated score. A conditional mean whose values happened to
-  fall in (0, 1) could be passed through `ps_trim()`, `ps_trunc()`, or
-  `ps_calibrate()` as if it were a propensity score and then weighted with
-  `wt_ate()` or `wt_cens()`, which selected or moved units by their predicted
-  dose and said nothing about positivity. Those six methods now refuse an
-  exposure they resolve as continuous, including one resolved from
-  `exposure_type = "auto"`, with an error of class
-  `propensity_modified_continuous_error`. A model of a conditional mean, a
-  least squares fit or a `glm` of any family but the binomial ones, is refused
-  by `ps_trunc()` and by `ps_refit()` on trimmed scores with an error of class
-  `propensity_model_family_error`, where `ps_refit()` previously refit
-  whatever model it was handed. `ps_trim()` reserves `method = "density"` and
-  `method = "resid"` for trimming a dose model on the scale of its conditional
-  density, and refuses both for a vector of values with an error of class
-  `propensity_method_error`, since a vector carries neither the residuals nor
-  the family a density is read from. Each refusal names the
-  routes for a dose: trimming the dose model with
-  `ps_trim(method = "density")`, or building its weights with `wt_ate()` and
-  bounding the weights with `wt_trunc()`. The first is described above;
-  `wt_trunc()` is not yet available, so until it is, a dose's weights that
-  should keep every unit are built from the dose model or its fitted means
-  directly.
-
-  A data frame of scores now behaves as the vector it holds does. A trimmed,
-  truncated, or calibrated column in a data frame passed to any `wt_*()`
-  function reached the weights as plain scores, so for a binary exposure its
-  trimming, truncation, or calibration record was silently dropped, along with
-  the warning that a trimmed score was not refit. The column now keeps its
-  record for a binary exposure, and is refused for a continuous exposure as
-  the vector is. A malformed `exposure_type` naming several types is now
-  reported as a malformed argument on the modified-score methods, rather than
-  read as unset and refused as a continuous exposure.
+* Weights built from a calibrated propensity score now keep their calibration
+  record (`ps_calib_meta`) through subsetting, `rep()`, and combining, as a
+  `ps_calib` vector already did. The record names the calibration method and
+  whether it was smoothed rather than any unit, but it was dropped along with
+  the positional trimming and truncation records whenever the length changed,
+  while the weights stayed marked as calibrated. Combining weights whose
+  calibration records disagree drops the record with a warning of class
+  `propensity_metadata_conflict_warning`, and a record only one input carries
+  is kept.
 
 * `dens_t()` now estimates the scale of the t under the t itself by default,
   as `dens_laplace()` estimates the scale of the Laplace. Both densities of a

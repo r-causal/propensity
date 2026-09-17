@@ -202,6 +202,13 @@ describe the exposure rather than any unit, so all of them carry by the
 agreement rule above: two calibration records agree when they name the same
 method and smoothing.
 
+\code{c()} of a single \code{psw} returns it unchanged, with every record. A combine
+through vctrs drops the positional records even when it is handed a single
+input: \code{vctrs::vec_c(x)}, \code{dplyr::bind_rows(df)}, \code{vctrs::vec_rbind(df)},
+and an ungrouped \code{dplyr::reframe()} all rebuild the column, so a later
+\code{\link[=is_unit_trimmed]{is_unit_trimmed()}}, \code{\link[=is_unit_truncated]{is_unit_truncated()}}, or \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}} on
+the result refuses it.
+
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
 Two kinds of attribute hold one value per observation and so cannot be
 re-indexed for a subset: a \code{stabilization_score} with more than one value,

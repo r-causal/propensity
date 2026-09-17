@@ -175,7 +175,7 @@
       Error in `ps_trim()`:
       ! Method "density" cannot trim a vector of values.
       x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
-      i Supply the fitted model of the exposure itself as `.propensity`.
+      i Supply the model of the exposure's conditional mean, such as an `lm()` fit, as `.propensity`.
 
 ---
 
@@ -185,7 +185,7 @@
       Error in `ps_trim()`:
       ! Method "resid" cannot trim a vector of values.
       x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
-      i Supply the fitted model of the exposure itself as `.propensity`.
+      i Supply the model of the exposure's conditional mean, such as an `lm()` fit, as `.propensity`.
 
 # ps_trim names `.exposure` when the method requires one
 
