@@ -2050,3 +2050,63 @@ test_that("ps_trunc() hands its own call to exposure-type detection", {
 
   expect_identical(detection_call, quote(outer_caller()))
 })
+
+# A binomial additive fit reports its scores as a one-dimensional array. With
+# only parametric terms it fits the same model as the binomial `glm`, so the two
+# bound the same units.
+test_that("ps_trunc() bounds a binomial additive fit like the equivalent glm", {
+  skip_if_not_installed("mgcv")
+
+  set.seed(1187)
+  n <- 250
+  gam_data <- data.frame(x1 = rnorm(n), x2 = rnorm(n))
+  gam_data$z <- rbinom(n, 1, plogis(2 * gam_data$x1 - 1.2 * gam_data$x2))
+
+  gam_fit <- mgcv::gam(z ~ x1 + x2, data = gam_data, family = binomial())
+  glm_fit <- glm(z ~ x1 + x2, data = gam_data, family = binomial())
+  gam_scores <- as.numeric(fitted(gam_fit))
+
+  truncs <- list(
+    ps = list(method = "ps"),
+    pctl = list(method = "pctl"),
+    cr = list(method = "cr", .exposure = gam_data$z),
+    adaptive = list(method = "adaptive")
+  )
+
+  for (kind in names(truncs)) {
+    args <- truncs[[kind]]
+    from_gam <- rlang::exec(ps_trunc, gam_fit, !!!args)
+    from_glm <- rlang::exec(ps_trunc, glm_fit, !!!args)
+    from_scores <- rlang::exec(ps_trunc, gam_scores, !!!args)
+
+    expect_s3_class(from_gam, "ps_trunc")
+    expect_null(dim(vctrs::vec_data(from_gam)))
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_scores),
+      tolerance = 1e-12,
+      info = kind
+    )
+    expect_identical(
+      ps_trunc_meta(from_gam),
+      ps_trunc_meta(from_scores),
+      info = kind
+    )
+    expect_identical(
+      ps_trunc_meta(from_gam)$truncated_idx,
+      ps_trunc_meta(from_glm)$truncated_idx,
+      info = kind
+    )
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_glm),
+      tolerance = 1e-6,
+      info = kind
+    )
+  }
+
+  expect_gt(
+    length(ps_trunc_meta(ps_trunc(gam_fit, method = "adaptive"))$truncated_idx),
+    0
+  )
+})

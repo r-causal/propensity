@@ -2939,6 +2939,82 @@ test_that("ps_refit() refits a two-level multinomial fit on the binary path", {
   expect_identical(ps_trim_meta(refitted)$keep_idx, meta$keep_idx)
 })
 
+# A binomial additive fit reports its scores as a one-dimensional array. With
+# only parametric terms it fits the same model as the binomial `glm`, so the two
+# trim the same units.
+trim_gam_fit <- function() {
+  mgcv::gam(z ~ x1 + x2, data = trim_model_data, family = binomial())
+}
+
+test_that("ps_trim() trims a binomial additive fit like the equivalent glm", {
+  skip_if_not_installed("mgcv")
+
+  gam_fit <- trim_gam_fit()
+  glm_fit <- trim_binary_fit()
+  gam_scores <- as.numeric(fitted(gam_fit))
+  z <- trim_model_data$z
+
+  trims <- list(
+    ps = list(method = "ps"),
+    adaptive = list(method = "adaptive"),
+    pctl = list(method = "pctl"),
+    pref = list(method = "pref", .exposure = z),
+    cr = list(method = "cr", .exposure = z)
+  )
+
+  for (kind in names(trims)) {
+    args <- trims[[kind]]
+    from_gam <- rlang::exec(ps_trim, gam_fit, !!!args)
+    from_glm <- rlang::exec(ps_trim, glm_fit, !!!args)
+
+    expect_s3_class(from_gam, "ps_trim")
+    expect_null(dim(from_gam))
+    expect_null(dim(vctrs::vec_data(from_gam)))
+    expect_same_trim(from_gam, rlang::exec(ps_trim, gam_scores, !!!args))
+    expect_identical(
+      ps_trim_meta(from_gam)$keep_idx,
+      ps_trim_meta(from_glm)$keep_idx,
+      info = kind
+    )
+    expect_identical(
+      ps_trim_meta(from_gam)$trimmed_idx,
+      ps_trim_meta(from_glm)$trimmed_idx,
+      info = kind
+    )
+    expect_equal(
+      as.numeric(from_gam),
+      as.numeric(from_glm),
+      tolerance = 1e-6,
+      info = kind
+    )
+  }
+})
+
+test_that("ps_refit() refits a score trimmed from a binomial additive fit", {
+  skip_if_not_installed("mgcv")
+
+  fit <- trim_gam_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+
+  by_hand <- mgcv::gam(
+    z ~ x1 + x2,
+    data = trim_model_data[meta$keep_idx, ],
+    family = binomial()
+  )
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[meta$keep_idx] <- as.numeric(fitted(by_hand))
+
+  expect_true(is_refit(refitted))
+  expect_null(dim(vctrs::vec_data(refitted)))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")
