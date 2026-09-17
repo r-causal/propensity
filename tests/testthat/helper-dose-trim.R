@@ -157,3 +157,52 @@ expect_dose_trim <- function(trimmed, oracle, n) {
   testthat::expect_gt(length(oracle$trimmed_idx), 0)
   testthat::expect_gt(length(oracle$keep_idx), 0)
 }
+
+# The density-ratio weights a trimmed dose model describes, worked out by hand
+# on the units with a conditional mean. `mu` holds `NA` at the trimmed
+# positions, and `sigma` is the one spread the conditional density is read at.
+# Without a numerator the weight is the inverse conditional density. The
+# marginal numerator is the same family read at the mean of the retained doses
+# and at the family's own spread of them. The integrated numerator averages the
+# conditional density over the retained units at 50 points spanning their
+# doses and interpolates back to each dose with a cubic spline.
+dose_trim_weights <- function(
+  a,
+  mu,
+  sigma,
+  numerator = c("none", "marginal", "integrated"),
+  family = "normal",
+  sigma_method = "rms",
+  df = NULL
+) {
+  numerator <- match.arg(numerator)
+  g <- function(z) dose_trim_g(z, family, df = df)
+
+  present <- !is.na(a) & !is.na(mu)
+  a_p <- a[present]
+  mu_p <- mu[present]
+  f_den <- g((a_p - mu_p) / sigma) / sigma
+
+  f_num <- switch(
+    numerator,
+    none = 1,
+    marginal = {
+      center <- mean(a_p)
+      spread <- dose_trim_sigma(a_p - center, family, sigma_method, df)
+      g((a_p - center) / spread) / spread
+    },
+    integrated = {
+      grid <- seq(min(a_p), max(a_p), length.out = 50L)
+      on_grid <- rowMeans(matrix(
+        g(as.vector(outer(grid, mu_p, "-") / sigma)),
+        nrow = length(grid)
+      )) /
+        sigma
+      stats::spline(grid, on_grid, xout = a_p, method = "fmm")$y
+    }
+  )
+
+  out <- rep(NA_real_, length(a))
+  out[present] <- f_num / f_den
+  out
+}
