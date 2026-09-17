@@ -17,6 +17,7 @@ new_psw(
   truncated = FALSE,
   calibrated = FALSE,
   stabilization_score = NULL,
+  wt_truncated = FALSE,
   ...
 )
 
@@ -27,7 +28,8 @@ psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  wt_truncated = FALSE
 )
 
 is_psw(x)
@@ -61,6 +63,10 @@ propensity scores? Defaults to \code{FALSE}.}
 the object, either a single value or one value per observation. Every value
 must be positive and finite. Defaults to \code{NULL}, meaning no fixed score was
 supplied.}
+
+\item{wt_truncated}{Logical. Were the weights themselves truncated? This is
+separate from \code{truncated}, which describes the propensity scores the
+weights were built from. Defaults to \code{FALSE}.}
 
 \item{...}{Additional attributes stored on the object (developer use only).}
 
@@ -98,6 +104,9 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \itemize{
 \item \code{is_psw()} tests whether an object is a \code{psw} vector.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
+\item \code{\link[=is_wt_truncated]{is_wt_truncated()}} returns \code{TRUE} if the weights themselves were
+truncated, which is recorded apart from whether the propensity scores they
+were built from were.
 \item \code{stabilization_score()} returns the user-supplied stabilization score, or
 \code{NULL} when none was recorded or when a per-observation score was dropped
 because an operation changed the length of the weights.
@@ -150,8 +159,8 @@ so operations like normalization (\code{weights / sum(weights)}) retain metadata
 An operation between two \code{psw} objects merges what each of them records. Two
 different estimands are pasted together, and an estimand only one operand
 names stands for the result; the result is stabilized only when both operands
-are, and it is marked as trimmed, truncated, or calibrated when either
-operand is. The remaining attributes, the \code{stabilization_score}, the records
+are, and it is marked as trimmed, truncated, calibrated, or weight-truncated
+when either operand is. The remaining attributes, the \code{stabilization_score}, the records
 left by a modified propensity score, the attributes describing a categorical
 exposure, and the exposure records, are carried by agreement: one only a
 single operand records carries, and one both record with the same value
@@ -183,7 +192,10 @@ metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector. Concatenation appends one set of observations to
 another, so the positions a modification record names would describe units
 from the other input; those records are dropped from the result whether or
-not the inputs agree on them. The categorical attributes name exposure levels
+not the inputs agree on them. Weights whose own values were truncated are
+combined only when the records they carry name the same bound, since weights
+bounded differently describe different estimands; a record already dropped
+agrees with any bound. The categorical attributes name exposure levels
 rather than positions, and the exposure records describe the exposure rather
 than any unit, so both carry when the inputs agree.
 
@@ -191,7 +203,8 @@ Subsetting with \code{[} preserves class and attributes for vector subscripts.
 Two kinds of attribute hold one value per observation and so cannot be
 re-indexed for a subset: a \code{stabilization_score} with more than one value,
 and the records left by a modified propensity score (\code{ps_trim_meta},
-\code{ps_trunc_meta}, and \code{ps_calib_meta}). Where an operation goes through
+\code{ps_trunc_meta}, and \code{ps_calib_meta}) or by truncating the weights
+themselves (\code{psw_trunc_meta}). Where an operation goes through
 vctrs, these are carried when the result comes back at the length they were
 recorded on and dropped when it does not. Any same-length operation keeps
 them, a reordering or a subscript with duplicates included, so the positions
@@ -211,7 +224,7 @@ model fit on them still carrying a record written for rows that are no
 longer there.
 
 Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} answer by position, so each checks that the record
+\code{\link[=is_unit_truncated]{is_unit_truncated()}} answer by position, as does \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}}, so each checks that the record
 covers the vector it is given and raises an error of class
 \code{propensity_missing_meta_error} when it does not, or when weights marked as
 modified carry no record at all, rather than name modified units at stale

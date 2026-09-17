@@ -1545,6 +1545,7 @@ test_that("the record of what an operation dropped stays off its result", {
       "trimmed",
       "truncated",
       "calibrated",
+      "wt_truncated",
       "class",
       "n_categories",
       "category_names",
