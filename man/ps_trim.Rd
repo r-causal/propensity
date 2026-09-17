@@ -336,11 +336,14 @@ slices off to print, so a warning would mostly describe something that is not
 the result. The values, the class, and the method and its cutoffs are
 untouched.
 
-\code{\link[=unique]{unique()}} keeps one element for each distinct value, and that element
-stands for every unit holding the value. The record is re-indexed onto the
-result when all of those units share one status, and dropped otherwise: a
-trimmed score and one that arrived missing are both \code{NA}, so a vector holding
-both returns a single \code{NA} that neither status describes.
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
+distinct row of a matrix of scores, and that element or row stands for every
+unit holding the same scores. A matrix comes back as a matrix of the same
+class with its column names. The record is re-indexed onto the result when
+all of the merged units share one status, and dropped otherwise: a trimmed
+score and one that arrived missing are both \code{NA}, and a trimmed row is \code{NA}
+throughout, so a vector or matrix holding both returns a single \code{NA} element
+or row that neither status describes.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it

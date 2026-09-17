@@ -266,11 +266,13 @@ build vectors the caller never holds, such as the pieces a grouped verb
 slices a column into. The values, the class, and the method and its bounds
 are untouched.
 
-\code{\link[=unique]{unique()}} keeps one element for each distinct value, and that element
-stands for every unit holding the value. The record is re-indexed onto the
-result when all of those units share one status, and dropped otherwise: a
-score that arrived at a bound and one moved onto it merge into a single
-element that neither status describes.
+\code{\link[=unique]{unique()}} keeps one element for each distinct value, or one row for each
+distinct row of a matrix of scores, and that element or row stands for every
+unit holding the same scores. A matrix comes back as a matrix of the same
+class with its column names. The record is re-indexed onto the result when
+all of the merged units share one status, and dropped otherwise: a score or
+row that arrived where truncation would put it and one truncation moved
+there merge into a single element or row that neither status describes.
 
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trunc} by subassignment carries

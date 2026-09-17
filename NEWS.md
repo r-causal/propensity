@@ -1,5 +1,13 @@
 # propensity 0.1.0.9000 (development version)
 
+* `unique()` of a `ps_trim` or `ps_trunc` matrix of categorical propensity
+  scores now keeps one row for each distinct row and returns a matrix of the
+  same class, with its column names and a trimming or truncation record
+  re-indexed onto the kept rows. It previously indexed the matrix as one long
+  vector and returned a plain numeric vector taken from the first column. As
+  for a vector, the record is dropped when merged rows differ in status, such
+  as a trimmed row and a row that arrived missing.
+
 * A `ps_trim` or `ps_trunc` vector now drops the positions in its record
   without a warning whenever an operation through vctrs changes its length, as
   a `psw` already did. A grouped `dplyr::mutate()` or `dplyr::summarise()`

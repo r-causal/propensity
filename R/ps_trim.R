@@ -268,11 +268,14 @@
 #' the result. The values, the class, and the method and its cutoffs are
 #' untouched.
 #'
-#' [unique()] keeps one element for each distinct value, and that element
-#' stands for every unit holding the value. The record is re-indexed onto the
-#' result when all of those units share one status, and dropped otherwise: a
-#' trimmed score and one that arrived missing are both `NA`, so a vector holding
-#' both returns a single `NA` that neither status describes.
+#' [unique()] keeps one element for each distinct value, or one row for each
+#' distinct row of a matrix of scores, and that element or row stands for every
+#' unit holding the same scores. A matrix comes back as a matrix of the same
+#' class with its column names. The record is re-indexed onto the result when
+#' all of the merged units share one status, and dropped otherwise: a trimmed
+#' score and one that arrived missing are both `NA`, and a trimmed row is `NA`
+#' throughout, so a vector or matrix holding both returns a single `NA` element
+#' or row that neither status describes.
 #'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
@@ -2408,26 +2411,29 @@ sort.ps_trim <- function(x, decreasing = FALSE, na.last = NA, ...) {
 unique.ps_trim <- function(x, incomparables = FALSE, ...) {
   check_incomparables(incomparables, "ps_trim")
 
-  # `vec_unique_loc()` names the position each retained value came from, which
-  # is the subscript re-indexing the record takes. Without this the restore
-  # behind vctrs' own method sees only a shorter vector and drops the record.
-  loc <- vec_unique_loc(x)
+  # The positions `vec_unique_loc()` names are the subscript re-indexing the
+  # record takes, rows for a matrix and elements otherwise. Without this the
+  # restore behind vctrs' own method sees only a shorter vector and drops the
+  # record.
+  values <- score_values(x)
+  loc <- vec_unique_loc(values)
+  out <- subset_score_units(x, loc)
   meta <- ps_trim_meta(x)
 
   # A retained value stands for every unit holding it, and the record can speak
   # for it only when all of those units share one standing. A trimmed score and
-  # one that arrived missing are both `NA`, so they merge into one element that
-  # neither status describes, and the record is dropped rather than left to
-  # report that element as one of them.
+  # one that arrived missing are both `NA`, and a trimmed row is `NA`
+  # throughout, so they merge into one element that neither status describes,
+  # and the record is dropped rather than left to report that element as one of
+  # them.
   if (
-    !is.matrix(x) &&
-      record_covers(meta, length(x)) &&
-      !merged_units_agree(vec_data(x), trim_unit_status(meta))
+    record_covers(meta, vec_size(values)) &&
+      !merged_units_agree(values, trim_unit_status(meta))
   ) {
-    return(new_trimmed_ps(vec_data(x)[loc], drop_trim_record(meta)))
+    attr(out, "ps_trim_meta") <- drop_trim_record(meta)
   }
 
-  x[loc]
+  out
 }
 
 #' @export

@@ -260,6 +260,30 @@ record_covers <- function(meta, n) {
   !is.null(meta$n_obs) && meta$n_obs == n
 }
 
+# The scores a modified propensity score holds, one unit per element or, for a
+# matrix, one unit per row. vctrs compares a bare matrix row by row, which is
+# what `unique()` of a matrix of scores merges.
+score_values <- function(x) {
+  if (is.matrix(x)) {
+    out <- unclass(x)[,, drop = FALSE]
+    dimnames(out) <- NULL
+    out
+  } else {
+    vctrs::vec_data(x)
+  }
+}
+
+# The units at `loc`, taken through the class's own subsetting so the result
+# keeps its class and a record re-indexed onto them. A matrix is subset by row;
+# a single subscript would index it as one long vector.
+subset_score_units <- function(x, loc) {
+  if (is.matrix(x)) {
+    x[loc, , drop = FALSE]
+  } else {
+    x[loc]
+  }
+}
+
 # Whether every set of units `unique()` merges into one element shares a single
 # status. `vec_group_id()` groups values the way `vec_unique_loc()` keeps them,
 # missing values included, so each group is one element of the result.

@@ -223,11 +223,13 @@
 #' slices a column into. The values, the class, and the method and its bounds
 #' are untouched.
 #'
-#' [unique()] keeps one element for each distinct value, and that element
-#' stands for every unit holding the value. The record is re-indexed onto the
-#' result when all of those units share one status, and dropped otherwise: a
-#' score that arrived at a bound and one moved onto it merge into a single
-#' element that neither status describes.
+#' [unique()] keeps one element for each distinct value, or one row for each
+#' distinct row of a matrix of scores, and that element or row stands for every
+#' unit holding the same scores. A matrix comes back as a matrix of the same
+#' class with its column names. The record is re-indexed onto the result when
+#' all of the merged units share one status, and dropped otherwise: a score or
+#' row that arrived where truncation would put it and one truncation moved
+#' there merge into a single element or row that neither status describes.
 #'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trunc` by subassignment carries
@@ -1870,10 +1872,13 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
 unique.ps_trunc <- function(x, incomparables = FALSE, ...) {
   check_incomparables(incomparables, "ps_trunc")
 
-  # `vec_unique_loc()` names the position each retained value came from, which
-  # is the subscript re-indexing the record takes. Without this the restore
-  # behind vctrs' own method sees only a shorter vector and drops the record.
-  loc <- vec_unique_loc(x)
+  # The positions `vec_unique_loc()` names are the subscript re-indexing the
+  # record takes, rows for a matrix and elements otherwise. Without this the
+  # restore behind vctrs' own method sees only a shorter vector and drops the
+  # record.
+  values <- score_values(x)
+  loc <- vec_unique_loc(values)
+  out <- subset_score_units(x, loc)
   meta <- ps_trunc_meta(x)
 
   # A retained value stands for every unit holding it, and the record can speak
@@ -1882,17 +1887,16 @@ unique.ps_trunc <- function(x, incomparables = FALSE, ...) {
   # describes, so the record is dropped rather than left to report it as one of
   # them.
   if (
-    !is.matrix(x) &&
-      record_covers(meta, length(x)) &&
+    record_covers(meta, vec_size(values)) &&
       !merged_units_agree(
-        vec_data(x),
-        seq_along(x) %in% meta$truncated_idx
+        values,
+        seq_len(vec_size(values)) %in% meta$truncated_idx
       )
   ) {
-    return(new_ps_trunc(vec_data(x)[loc], drop_trunc_record(meta)))
+    attr(out, "ps_trunc_meta") <- drop_trunc_record(meta)
   }
 
-  x[loc]
+  out
 }
 
 #' @export
