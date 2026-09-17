@@ -195,15 +195,18 @@ from the other input; those records are dropped from the result whether or
 not the inputs agree on them. Weights whose own values were truncated are
 combined only when the records they carry name the same bound, since weights
 bounded differently describe different estimands; a record already dropped
-agrees with any bound. The categorical attributes name exposure levels
-rather than positions, and the exposure records describe the exposure rather
-than any unit, so both carry when the inputs agree.
+agrees with any bound. The calibration record (\code{ps_calib_meta}) names the
+curve the scores were calibrated with rather than any position, the
+categorical attributes name exposure levels, and the exposure records
+describe the exposure rather than any unit, so all of them carry by the
+agreement rule above: two calibration records agree when they name the same
+method and smoothing.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
 Two kinds of attribute hold one value per observation and so cannot be
 re-indexed for a subset: a \code{stabilization_score} with more than one value,
-and the records left by a modified propensity score (\code{ps_trim_meta},
-\code{ps_trunc_meta}, and \code{ps_calib_meta}) or by truncating the weights
+and the records left by a trimmed or truncated propensity score
+(\code{ps_trim_meta} and \code{ps_trunc_meta}) or by truncating the weights
 themselves (\code{psw_trunc_meta}). Where an operation goes through
 vctrs, these are carried when the result comes back at the length they were
 recorded on and dropped when it does not. Any same-length operation keeps
@@ -234,10 +237,11 @@ record is absent entirely.
 
 The result of any of these operations stays a \code{psw} and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated
-status, the attributes describing a categorical exposure, which name the
+status, the calibration record, which names a calibration curve rather than
+any unit, the attributes describing a categorical exposure, which name the
 exposure levels rather than the units, and the exposure records, which
-describe the exposure rather than any unit, so both mean the same thing at
-any length.
+describe the exposure rather than any unit, so all of them mean the same
+thing at any length.
 
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so

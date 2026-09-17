@@ -110,15 +110,18 @@
 #' not the inputs agree on them. Weights whose own values were truncated are
 #' combined only when the records they carry name the same bound, since weights
 #' bounded differently describe different estimands; a record already dropped
-#' agrees with any bound. The categorical attributes name exposure levels
-#' rather than positions, and the exposure records describe the exposure rather
-#' than any unit, so both carry when the inputs agree.
+#' agrees with any bound. The calibration record (`ps_calib_meta`) names the
+#' curve the scores were calibrated with rather than any position, the
+#' categorical attributes name exposure levels, and the exposure records
+#' describe the exposure rather than any unit, so all of them carry by the
+#' agreement rule above: two calibration records agree when they name the same
+#' method and smoothing.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
 #' Two kinds of attribute hold one value per observation and so cannot be
 #' re-indexed for a subset: a `stabilization_score` with more than one value,
-#' and the records left by a modified propensity score (`ps_trim_meta`,
-#' `ps_trunc_meta`, and `ps_calib_meta`) or by truncating the weights
+#' and the records left by a trimmed or truncated propensity score
+#' (`ps_trim_meta` and `ps_trunc_meta`) or by truncating the weights
 #' themselves (`psw_trunc_meta`). Where an operation goes through
 #' vctrs, these are carried when the result comes back at the length they were
 #' recorded on and dropped when it does not. Any same-length operation keeps
@@ -149,10 +152,11 @@
 #'
 #' The result of any of these operations stays a `psw` and keeps every other
 #' attribute, including its stabilized, trimmed, truncated, and calibrated
-#' status, the attributes describing a categorical exposure, which name the
+#' status, the calibration record, which names a calibration curve rather than
+#' any unit, the attributes describing a categorical exposure, which name the
 #' exposure levels rather than the units, and the exposure records, which
-#' describe the exposure rather than any unit, so both mean the same thing at
-#' any length.
+#' describe the exposure rather than any unit, so all of them mean the same
+#' thing at any length.
 #'
 #' Matrix or array subscripts intentionally drop the `psw` class and return
 #' a plain numeric vector via base R linear indexing; this is required so
@@ -1297,16 +1301,20 @@ check_stabilization_score <- function(score, n, call = rlang::caller_env()) {
   as.double(score)
 }
 
-# The records a modified propensity score leaves on the weights built from it,
-# and the record truncating the weights themselves leaves. Each holds indices
-# into the observations it was recorded on, so like a per-observation
-# stabilization score, each is only meaningful at that length.
+# The records a trimmed or truncated propensity score leaves on the weights
+# built from it, and the record truncating the weights themselves leaves. Each
+# holds indices into the observations it was recorded on, so like a
+# per-observation stabilization score, each is only meaningful at that length.
 psw_modification_meta <- c(
   "ps_trim_meta",
   "ps_trunc_meta",
-  "ps_calib_meta",
   "psw_trunc_meta"
 )
+
+# The record a calibrated propensity score leaves on the weights built from it.
+# It names the curve the scores were calibrated with and whether that curve was
+# smoothed, and no unit, so it carries no length of its own.
+psw_calib_attr <- "ps_calib_meta"
 
 # Attributes describing a categorical exposure. These name the exposure levels
 # rather than the units, so they carry no length of their own.
@@ -1386,16 +1394,21 @@ psw_stabilization_scores <- function(x) {
 psw_joint_attr <- "joint_wt_meta"
 
 # Everything a psw carries beyond the six fields describing the weights as a
-# whole. The score and the modification records are indexed by observation; the
-# categorical attributes name exposure levels, the exposure records describe the
-# exposure, and the joint record names the two components, so all of those hold
-# at any length.
-psw_carried_attrs <- c(
-  "stabilization_score",
-  psw_modification_meta,
+# whole. The score and the positional modification records are indexed by
+# observation; the calibration record names a curve, the categorical attributes
+# name exposure levels, the exposure records describe the exposure, and the
+# joint record names the two components, so all of those hold at any length.
+psw_length_free_attrs <- c(
+  psw_calib_attr,
   psw_categorical_attrs,
   psw_exposure_attrs,
   psw_joint_attr
+)
+
+psw_carried_attrs <- c(
+  "stabilization_score",
+  psw_modification_meta,
+  psw_length_free_attrs
 )
 
 # The attributes a disagreement has already dropped from a prototype under
@@ -1644,6 +1657,12 @@ psw_attrs_agree <- function(field, x, y) {
     return(joint_wt_meta_agrees(x, y))
   }
 
+  # A calibration record is compared on what describes the calibration, the
+  # comparison two calibrated scores are combined on.
+  if (identical(field, psw_calib_attr)) {
+    return(identical(calib_parameters(x), calib_parameters(y)))
+  }
+
   identical(x, y)
 }
 
@@ -1869,16 +1888,12 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
   # another, so the positions a modification record names would describe units
   # from the other input. Nothing rebuilding the combined vector is handed the
   # offsets, so the records are left off the prototype whether or not the inputs
-  # agree on them. The categorical attributes name exposure levels rather than
-  # positions, the exposure records describe the exposure rather than any unit,
-  # and the joint record names the two components a product was built from, so
-  # all of them mean the same thing at the combined length.
-  merged <- merge_psw_attrs(
-    x,
-    y,
-    0,
-    fields = c(psw_categorical_attrs, psw_exposure_attrs, psw_joint_attr)
-  )
+  # agree on them. The calibration record names a curve rather than positions,
+  # the categorical attributes name exposure levels, the exposure records
+  # describe the exposure rather than any unit, and the joint record names the
+  # two components a product was built from, so all of them mean the same thing
+  # at the combined length.
+  merged <- merge_psw_attrs(x, y, 0, fields = psw_length_free_attrs)
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)
   }

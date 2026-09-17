@@ -1,5 +1,15 @@
 # propensity 0.1.0.9000 (development version)
 
+* Weights built from a calibrated propensity score now keep their calibration
+  record (`ps_calib_meta`) through subsetting, `rep()`, and combining, as a
+  `ps_calib` vector already did. The record names the calibration method and
+  whether it was smoothed rather than any unit, but it was dropped along with
+  the positional trimming and truncation records whenever the length changed,
+  while the weights stayed marked as calibrated. Combining weights whose
+  calibration records disagree drops the record with a warning of class
+  `propensity_metadata_conflict_warning`, and a record only one input carries
+  is kept.
+
 * A `ps_trim` or `ps_trunc` vector restored against a zero-length prototype
   now drops the positions in its record, keeping its class and the description
   of the trimming or truncation. Combining reordered pieces with
@@ -11,7 +21,7 @@
   vector returns it unchanged.
 
 * `c()` of a single `psw` now returns it unchanged, keeping its trimming,
-  truncation, calibration, and weight truncation records, as `c()` already
+  truncation, and weight truncation records, as `c()` already
   did for a single `ps_trim` or `ps_trunc` vector. Every other combine,
   including `vctrs::vec_c()` and `vctrs::list_unchop()` of a single `psw`,
   still drops those records.
