@@ -3264,6 +3264,61 @@ test_that("ps_refit() refuses a model of one probability for a matrix of scores"
   )
 })
 
+# A trim that names the first level as focal holds the probability of that
+# level, one minus what the fit reports, and a refit keeps reporting the same
+# level's probability.
+expect_refit_keeps_focal_level <- function(fit, refit_by_hand, ...) {
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.25, upper = 0.8, ...)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  by_hand <- refit_by_hand(trim_model_data[keep, ])
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- 1 - as.numeric(fitted(by_hand))
+
+  expect_no_warning(
+    refitted <- ps_refit(trimmed, fit, .data = trim_model_data)
+  )
+  expect_true(is_refit(refitted))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
+}
+
+test_that("ps_refit() keeps a first-level focal level of a binomial fit", {
+  refit_by_hand <- function(rows) {
+    glm(z ~ x1 + x2, data = rows, family = binomial())
+  }
+
+  expect_refit_keeps_focal_level(
+    trim_binary_fit(),
+    refit_by_hand,
+    .focal_level = 0
+  )
+  expect_refit_keeps_focal_level(
+    trim_binary_fit(),
+    refit_by_hand,
+    .reference_level = 1
+  )
+})
+
+test_that("ps_refit() keeps a first-level focal level of a two-level multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  refit_by_hand <- function(rows) {
+    nnet::multinom(a2 ~ x1 + x2, data = rows, trace = FALSE)
+  }
+
+  expect_refit_keeps_focal_level(
+    trim_two_level_fit(),
+    refit_by_hand,
+    .focal_level = "control"
+  )
+  expect_refit_keeps_focal_level(
+    trim_two_level_fit(),
+    refit_by_hand,
+    .reference_level = "treated"
+  )
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")
