@@ -15,6 +15,12 @@
   which describe a truncated propensity score. Weights truncated at different
   bounds do not combine.
 
+* New `wt_trunc_sensitivity()` truncates weights with `wt_trunc()` at each
+  bound in a grid and returns a tibble of the bounds as given and as applied,
+  the number of weights moved, and the range, range ratio, and mean of the
+  result, after a first row that describes the untruncated weights. The
+  default is a percentile grid at 0.99, 0.975, 0.95, and 0.90.
+
 * `ipw()` refuses weights bounded with `wt_trunc()` on every exposure route,
   with the dedicated error class `propensity_ipw_wt_truncated_error`. The
   message names the two supported alternatives: rebuild the weights without

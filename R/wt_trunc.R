@@ -211,6 +211,9 @@ wt_trunc.numeric <- function(
   call <- rlang::current_env()
   rlang::check_dots_empty(call = call)
   method <- rlang::arg_match(method, error_call = call)
+  if (!is.null(dim(.weights))) {
+    abort_wt_trunc_dims(.weights, call = call)
+  }
 
   # `psw()` drops every attribute of what it is given, names included, and the
   # names identify the units the weights belong to.
@@ -274,6 +277,21 @@ abort_wt_trunc_scores <- function(.weights, call = rlang::caller_env()) {
       i = "Build weights from it with a weight function such as {.fun wt_ate}
            and truncate those, or bound the scores themselves with
            {.fun ps_trunc}."
+    ),
+    error_class = "propensity_type_error",
+    call = call
+  )
+}
+
+# Weights are one per unit, so a matrix or array has no single reading as a
+# vector of them.
+abort_wt_trunc_dims <- function(.weights, call = rlang::caller_env()) {
+  abort(
+    c(
+      "{.arg .weights} must be a vector of weights, one per unit.",
+      x = "It has dimensions {paste(dim(.weights), collapse = ' x ')}.",
+      i = "Pass a {.cls psw} vector, such as one {.fun wt_ate} returns, or a
+           plain numeric vector."
     ),
     error_class = "propensity_type_error",
     call = call

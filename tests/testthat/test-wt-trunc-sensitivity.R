@@ -410,8 +410,30 @@ test_that("one invalid bound refuses the whole grid with wt_trunc()'s class", {
     class = "propensity_type_error"
   )
 
+  # The refusal names where in the grid the bound sits, including a lower
+  # bound that was recycled.
+  position <- function(expr) {
+    cnd <- rlang::catch_cnd(expr, classes = "error")
+    gsub("\\s+", " ", conditionMessage(cnd))
+  }
+  expect_match(
+    position(wt_trunc_sensitivity(w, method = "pctl", upper = c(0.99, 1.5))),
+    "position 2 of the grid",
+    fixed = TRUE
+  )
+  expect_match(
+    position(
+      wt_trunc_sensitivity(w, method = "wt", lower = 3, upper = c(5, 2.5))
+    ),
+    "position 2 of the grid",
+    fixed = TRUE
+  )
+
   expect_propensity_error(
     wt_trunc_sensitivity(w, method = "pctl", upper = c(0.99, 1.5))
+  )
+  expect_propensity_error(
+    wt_trunc_sensitivity(w, method = "wt", lower = 3, upper = c(5, 2.5))
   )
   expect_propensity_error(
     wt_trunc_sensitivity(w, method = "wt", upper = c(5, NA))
@@ -622,6 +644,39 @@ test_that("input that is not weights is refused", {
   expect_error(wt_trunc_sensitivity(list(1, 2)), class = "propensity_error")
 })
 
+test_that("a matrix of weights is refused", {
+  weights <- matrix(c(1, 2, 3, 40), nrow = 2)
+
+  expect_error(wt_trunc_sensitivity(weights), class = "propensity_type_error")
+  expect_error(
+    wt_trunc_sensitivity(weights, method = "wt", upper = 5),
+    class = "propensity_type_error"
+  )
+
+  expect_propensity_error(wt_trunc_sensitivity(weights))
+})
+
+test_that("a grid that is not an atomic vector is refused", {
+  w <- hand_weights()
+
+  expect_error(
+    wt_trunc_sensitivity(w, method = "wt", upper = list(5, 2)),
+    class = "propensity_type_error"
+  )
+  expect_error(
+    wt_trunc_sensitivity(w, method = "wt", lower = list(1), upper = 5),
+    class = "propensity_type_error"
+  )
+  expect_error(
+    wt_trunc_sensitivity(w, lower = list(0.01, 0.02, 0.03, 0.04)),
+    class = "propensity_type_error"
+  )
+
+  expect_propensity_error(
+    wt_trunc_sensitivity(w, method = "wt", upper = list(5, 2))
+  )
+})
+
 test_that("weights that are already truncated are refused", {
   # A grid over weights that were already bounded would report a reference row
   # that is not the untruncated weights, so it is refused rather than
@@ -646,4 +701,62 @@ test_that("weights that are already truncated are refused", {
   expect_match(message, "wt_trunc()", fixed = TRUE)
 
   expect_propensity_error(wt_trunc_sensitivity(once))
+})
+
+# ---- conditions from wt_trunc() ----------------------------------------------
+
+test_that("a warning raised inside wt_trunc() passes through unchanged", {
+  w <- hand_weights()
+  expected <- wt_trunc_sensitivity(w, method = "wt", upper = c(5, 2.5))
+  real_wt_trunc <- wt_trunc
+  local_mocked_bindings(
+    wt_trunc = function(...) {
+      rlang::warn(
+        "A warning from inside.",
+        class = "inner_warning",
+        call = quote(inner())
+      )
+      real_wt_trunc(...)
+    }
+  )
+
+  warnings <- list()
+  out <- withCallingHandlers(
+    wt_trunc_sensitivity(w, method = "wt", upper = c(5, 2.5)),
+    warning = function(cnd) {
+      warnings[[length(warnings) + 1]] <<- cnd
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_identical(out, expected)
+  expect_length(warnings, 2)
+  for (cnd in warnings) {
+    expect_s3_class(cnd, "inner_warning")
+    expect_identical(conditionMessage(cnd), "A warning from inside.")
+    expect_identical(conditionCall(cnd), quote(inner()))
+  }
+})
+
+test_that("an error from inside wt_trunc() that is not a propensity error passes through unchanged", {
+  w <- hand_weights()
+  local_mocked_bindings(
+    wt_trunc = function(...) {
+      rlang::abort(
+        "An error from inside.",
+        class = "inner_error",
+        call = quote(inner())
+      )
+    }
+  )
+
+  cnd <- rlang::catch_cnd(
+    wt_trunc_sensitivity(w, method = "wt", upper = c(5, 2.5)),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "inner_error")
+  expect_false(inherits(cnd, "propensity_error"))
+  expect_identical(conditionMessage(cnd), "An error from inside.")
+  expect_identical(conditionCall(cnd), quote(inner()))
 })

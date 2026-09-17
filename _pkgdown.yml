@@ -56,6 +56,7 @@ reference:
   - is_ps_truncated
   - is_unit_truncated
   - wt_trunc
+  - wt_trunc_sensitivity
 - title: Calibration and tilting
   desc: Recalibrate fitted propensity scores, and evaluate the tilting function
     an estimand implies.

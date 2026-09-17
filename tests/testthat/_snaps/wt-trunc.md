@@ -108,6 +108,16 @@
       x It is <character>, which holds no weights to bound.
       i Pass a <psw> vector, such as one `wt_ate()` returns.
 
+# wt_trunc() refuses a matrix of weights
+
+    Code
+      expr
+    Condition <propensity_type_error>
+      Error in `wt_trunc()`:
+      ! `.weights` must be a vector of weights, one per unit.
+      x It has dimensions 2 x 2.
+      i Pass a <psw> vector, such as one `wt_ate()` returns, or a plain numeric vector.
+
 # wt_trunc() refuses propensity scores
 
     Code

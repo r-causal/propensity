@@ -802,6 +802,18 @@ test_that("wt_trunc() refuses input that is not weights", {
   expect_propensity_error(wt_trunc(c("a", "b")))
 })
 
+test_that("wt_trunc() refuses a matrix of weights", {
+  weights <- matrix(c(1, 2, 3, 40), nrow = 2)
+
+  expect_error(
+    wt_trunc(weights, method = "wt", upper = 5),
+    class = "propensity_type_error"
+  )
+  expect_error(wt_trunc(weights), class = "propensity_type_error")
+
+  expect_propensity_error(wt_trunc(weights, method = "wt", upper = 5))
+})
+
 test_that("wt_trunc() refuses propensity scores", {
   # A trimmed, truncated, or calibrated score is a score rather than a weight.
   # The refusal points to building weights from it first, or to bounding the

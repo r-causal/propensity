@@ -356,6 +356,7 @@ export(wt_cens)
 export(wt_entropy)
 export(wt_joint)
 export(wt_trunc)
+export(wt_trunc_sensitivity)
 import(vctrs)
 importFrom(causalgenerics,
   "estimand<-",
