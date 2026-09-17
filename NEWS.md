@@ -1,11 +1,10 @@
 # propensity 0.1.0.9000 (development version)
 
-* Combining a single `psw` with `c()`, `vctrs::vec_c()`, or
-  `vctrs::list_unchop()` now keeps its trimming, truncation, calibration, and
-  weight truncation records, so `c(w)` returns `w` unchanged, as it already
-  did for `ps_trim` and `ps_trunc` vectors. Each positional record is now
-  judged against the number of observations it was written for. A combine of
-  two or more inputs still drops the positional records.
+* `c()` of a single `psw` now returns it unchanged, keeping its trimming,
+  truncation, calibration, and weight truncation records, as `c()` already
+  did for a single `ps_trim` or `ps_trunc` vector. Every other combine,
+  including `vctrs::vec_c()` and `vctrs::list_unchop()` of a single `psw`,
+  still drops those records.
 
 * Breaking change: `ps_trunc(method = "ps")` now mirrors a bound supplied
   alone. `lower` alone bounds a binary score at `[lower, 1 - lower]`, and

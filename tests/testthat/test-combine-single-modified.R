@@ -1,7 +1,7 @@
-# Combining a single vector returns that vector's observations at its own length
-# and in its own order, so every record naming those observations still
-# describes them. Combining two or more vectors appends observations from
-# different sources, and a positional record describes none of the result.
+# Combining a single set of weights with base `c()` returns that set, so every
+# record naming its observations still describes them. Every other combine goes
+# through vctrs, which cannot tell the input's own prototype from one a caller
+# supplied, and drops the positional records.
 
 # fmt: skip
 single_combine_ps <- c(
@@ -59,17 +59,44 @@ test_that("c() of one trimmed psw keeps its trimming record", {
   expect_identical(combined, w)
 })
 
-test_that("vec_c() and list_unchop() of one trimmed psw keep the record", {
+test_that("c() of one psw keeps its names, and a NULL alongside it", {
+  w <- single_trimmed_psw()
+  named <- w
+  names(named) <- paste0("u", seq_along(w))
+
+  expect_identical(c(named), named)
+
+  # Base R discards a NULL argument before dispatch, so this is a combine of
+  # one set of weights.
+  expect_identical(c(w, NULL), w)
+})
+
+test_that("c() of one psw still refuses what vctrs refuses", {
   w <- single_trimmed_psw()
 
-  expect_identical(ps_trim_meta(vctrs::vec_c(w)), ps_trim_meta(w))
-  expect_identical(
-    ps_trim_meta(vctrs::list_unchop(list(w))),
-    ps_trim_meta(w)
+  expect_error(c(w, recursive = TRUE), "recursive")
+  expect_error(c(w, use.names = FALSE), "use.names")
+  expect_error(c(x = w), "outer name")
+})
+
+test_that("vec_c() and list_unchop() of one trimmed psw drop the record", {
+  # vctrs restores the result against a zero-length prototype, which cannot be
+  # told apart from one a caller supplied for data from elsewhere.
+  w <- single_trimmed_psw()
+
+  from_vec_c <- vctrs::vec_c(w)
+  expect_null(attr(from_vec_c, "ps_trim_meta"))
+  expect_true(is_ps_trimmed(from_vec_c))
+  expect_error(
+    is_unit_trimmed(from_vec_c),
+    class = "propensity_missing_meta_error"
   )
-  expect_identical(
-    is_unit_trimmed(vctrs::list_unchop(list(w))),
-    is_unit_trimmed(w)
+
+  from_unchop <- vctrs::list_unchop(list(w))
+  expect_null(attr(from_unchop, "ps_trim_meta"))
+  expect_error(
+    is_unit_trimmed(from_unchop),
+    class = "propensity_missing_meta_error"
   )
 })
 
@@ -148,6 +175,67 @@ test_that("c() of two truncated-score psw drops the truncation record", {
   combined <- c(w, w)
 
   expect_null(attr(combined, "ps_trunc_meta"))
+})
+
+# A prototype or cast target supplied by the caller -------------------------
+
+# Each of these restores data that is not the weights' own, in their order,
+# against a zero-length prototype carrying the weights' records. None of the
+# records describes the result.
+
+expect_trim_record_dropped <- function(x) {
+  expect_null(attr(x, "ps_trim_meta"))
+  expect_error(is_unit_trimmed(x), class = "propensity_missing_meta_error")
+}
+
+test_that("reordered pieces combined at a supplied prototype drop the record", {
+  w <- single_trimmed_psw()
+  first <- suppressWarnings(w[1:10])
+  second <- suppressWarnings(w[11:20])
+
+  expect_trim_record_dropped(
+    vctrs::list_unchop(list(second, first), ptype = vctrs::vec_ptype(w))
+  )
+  expect_trim_record_dropped(vctrs::vec_c(second, first, .ptype = w))
+})
+
+test_that("other weights combined at a supplied prototype drop the record", {
+  w <- single_trimmed_psw()
+  other <- suppressWarnings(rev(w))
+
+  expect_trim_record_dropped(vctrs::vec_c(other, .ptype = w))
+})
+
+test_that("a cast to or an initialization at the prototype drops the record", {
+  w <- single_trimmed_psw()
+
+  expect_trim_record_dropped(
+    vctrs::vec_cast(seq(1, 2, length.out = 20), vctrs::vec_ptype(w))
+  )
+  expect_trim_record_dropped(vctrs::vec_init(w[0], 20))
+})
+
+test_that("a supplied prototype drops the weight truncation record", {
+  w <- single_wt_truncated_psw()
+  first <- suppressWarnings(w[1:10])
+  second <- suppressWarnings(w[11:20])
+
+  unchopped <- vctrs::list_unchop(
+    list(second, first),
+    ptype = vctrs::vec_ptype(w)
+  )
+  expect_null(attr(unchopped, "psw_trunc_meta"))
+  expect_error(
+    is_unit_wt_truncated(unchopped),
+    class = "propensity_missing_meta_error"
+  )
+
+  cast <- vctrs::vec_cast(seq(1, 2, length.out = 20), vctrs::vec_ptype(w))
+  expect_null(attr(cast, "psw_trunc_meta"))
+  expect_error(
+    is_unit_wt_truncated(cast),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 # The propensity score classes -----------------------------------------------
