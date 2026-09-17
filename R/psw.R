@@ -75,12 +75,12 @@
 #' different estimands are pasted together, and an estimand only one operand
 #' names stands for the result; the result is stabilized only when both operands
 #' are, and it is marked as trimmed, truncated, calibrated, or weight-truncated
-#' when either operand is. The remaining attributes, the `stabilization_score`, the records
-#' left by a modified propensity score, the attributes describing a categorical
-#' exposure, and the exposure records, are carried by agreement: one only a
-#' single operand records carries, and one both record with the same value
-#' carries. One they record differently is dropped, since neither value
-#' describes the result, and a warning of class
+#' when either operand is. The remaining attributes, the
+#' `stabilization_score`, the records left by a modified propensity score, the
+#' attributes describing a categorical exposure, and the exposure records, are
+#' carried by agreement: one only a single operand records carries, and one
+#' both record with the same value carries. One they record differently is
+#' dropped, since neither value describes the result, and a warning of class
 #' `propensity_metadata_conflict_warning` names it, once for each attribute
 #' dropped that way and whatever order the inputs were given in. The rule is
 #' applied per operation, so an attribute one operation drops for a
@@ -138,14 +138,14 @@
 #' model fit on them still carrying a record written for rows that are no
 #' longer there.
 #'
-#' Honesty therefore lives at query time. [is_unit_trimmed()] and
-#' [is_unit_truncated()] answer by position, as does [is_unit_wt_truncated()], so each checks that the record
-#' covers the vector it is given and raises an error of class
-#' `propensity_missing_meta_error` when it does not, or when weights marked as
-#' modified carry no record at all, rather than name modified units at stale
-#' positions. [is_refit()] reads a single flag rather than a position, so it
-#' answers from any record present and refuses only when the record is absent
-#' entirely.
+#' Honesty therefore lives at query time. [is_unit_trimmed()],
+#' [is_unit_truncated()], and [is_unit_wt_truncated()] answer by position, so
+#' each checks that the record covers the vector it is given and raises an
+#' error of class `propensity_missing_meta_error` when it does not, or when
+#' weights marked as modified carry no record at all, rather than name modified
+#' units at stale positions. [is_refit()] reads a single flag rather than a
+#' position, so it answers from any record present and refuses only when the
+#' record is absent entirely.
 #'
 #' The result of any of these operations stays a `psw` and keeps every other
 #' attribute, including its stabilized, trimmed, truncated, and calibrated
@@ -1030,17 +1030,22 @@ obj_print_footer.psw <- function(x, ...) {
   # estimated the numerator is named there, among the rest of the ratio.
   if (!is.null(meta)) {
     writeLines(format(meta))
-
-    return(invisible(x))
+  } else {
+    # Weights that are not a ratio of densities record no ratio and print none.
+    # A numerator the caller's model estimated is still worth naming, the
+    # reader's question being the same one either way: which numerator are
+    # these weights divided by.
+    formula <- density_meta_model_formula(numerator_model(x))
+    if (!is.null(formula)) {
+      writeLines(paste("stabilize:", formula))
+    }
   }
 
-  # Weights that are not a ratio of densities record no ratio and print none.
-  # A numerator the caller's model estimated is still worth naming, the
-  # reader's question being the same one either way: which numerator are these
-  # weights divided by.
-  formula <- density_meta_model_formula(numerator_model(x))
-  if (!is.null(formula)) {
-    writeLines(paste("stabilize:", formula))
+  # A bound on the weights themselves is reported after whatever describes how
+  # they were built, since it was applied to them afterwards.
+  truncation <- format_psw_trunc_line(x)
+  if (!is.null(truncation)) {
+    writeLines(truncation)
   }
 
   invisible(x)
@@ -1768,9 +1773,9 @@ vec_restore.psw <- function(x, to, ...) {
 # modification of the propensity scores they were built from, and whether the
 # weights themselves were truncated. The bound a truncation applied is left out:
 # a cast is also how a psw is checked against its own prototype, which carries
-# no record, so the bound is compared only where two inputs combine. `vec_ptype2()` and
-# `vec_cast()` read the same set, so weights that combine without complaint are
-# also each other's type.
+# no record, so the bound is compared only where two inputs combine.
+# `vec_ptype2()` and `vec_cast()` read the same set, so weights that combine
+# without complaint are also each other's type.
 psw_type_fields <- function(x) {
   list(
     estimand = estimand(x),

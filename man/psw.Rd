@@ -160,12 +160,12 @@ An operation between two \code{psw} objects merges what each of them records. Tw
 different estimands are pasted together, and an estimand only one operand
 names stands for the result; the result is stabilized only when both operands
 are, and it is marked as trimmed, truncated, calibrated, or weight-truncated
-when either operand is. The remaining attributes, the \code{stabilization_score}, the records
-left by a modified propensity score, the attributes describing a categorical
-exposure, and the exposure records, are carried by agreement: one only a
-single operand records carries, and one both record with the same value
-carries. One they record differently is dropped, since neither value
-describes the result, and a warning of class
+when either operand is. The remaining attributes, the
+\code{stabilization_score}, the records left by a modified propensity score, the
+attributes describing a categorical exposure, and the exposure records, are
+carried by agreement: one only a single operand records carries, and one
+both record with the same value carries. One they record differently is
+dropped, since neither value describes the result, and a warning of class
 \code{propensity_metadata_conflict_warning} names it, once for each attribute
 dropped that way and whatever order the inputs were given in. The rule is
 applied per operation, so an attribute one operation drops for a
@@ -223,14 +223,14 @@ weights built on trimmed propensity scores come back out of every outcome
 model fit on them still carrying a record written for rows that are no
 longer there.
 
-Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} answer by position, as does \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}}, so each checks that the record
-covers the vector it is given and raises an error of class
-\code{propensity_missing_meta_error} when it does not, or when weights marked as
-modified carry no record at all, rather than name modified units at stale
-positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather than a position, so it
-answers from any record present and refuses only when the record is absent
-entirely.
+Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}},
+\code{\link[=is_unit_truncated]{is_unit_truncated()}}, and \code{\link[=is_unit_wt_truncated]{is_unit_wt_truncated()}} answer by position, so
+each checks that the record covers the vector it is given and raises an
+error of class \code{propensity_missing_meta_error} when it does not, or when
+weights marked as modified carry no record at all, rather than name modified
+units at stale positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather than a
+position, so it answers from any record present and refuses only when the
+record is absent entirely.
 
 The result of any of these operations stays a \code{psw} and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated

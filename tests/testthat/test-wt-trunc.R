@@ -757,6 +757,44 @@ test_that("a bare numeric vector becomes a truncated psw with no estimand", {
   expect_null(estimand(adaptive))
 })
 
+test_that("the names on the weights are kept", {
+  unit_names <- paste0("u", 1:5)
+  x <- stats::setNames(c(0.5, 1, 4, 2, 25), unit_names)
+  w <- psw(x, estimand = "ate")
+  names(w) <- unit_names
+
+  from_psw <- list(
+    wt = wt_trunc(w, method = "wt", upper = 3),
+    count = wt_trunc(w, method = "count", upper = 1)
+  )
+  from_numeric <- list(
+    wt = wt_trunc(x, method = "wt", upper = 3),
+    count = wt_trunc(x, method = "count", upper = 1)
+  )
+
+  for (method in names(from_psw)) {
+    expect_identical(names(from_psw[[method]]), unit_names, info = method)
+    expect_identical(names(from_numeric[[method]]), unit_names, info = method)
+  }
+  expect_equal(unname(as.numeric(from_psw$wt)), c(0.5, 1, 3, 2, 3))
+  expect_equal(unname(as.numeric(from_numeric$count)), c(0.5, 1, 4, 2, 4))
+
+  # Integer input still becomes doubles when it is named.
+  named_integer <- wt_trunc(
+    c(a = 1L, b = 5L, c = 30L),
+    method = "wt",
+    upper = 2.5
+  )
+  expect_type(vctrs::vec_data(named_integer), "double")
+  expect_identical(names(named_integer), c("a", "b", "c"))
+})
+
+test_that("a subset that drops the record prints a truncation line without counts", {
+  w <- psw(c(0.5, 1, 4, 2, 25), estimand = "ate")
+
+  expect_snapshot(wt_trunc(w, method = "wt", upper = 3)[1:3])
+})
+
 test_that("wt_trunc() refuses input that is not weights", {
   expect_error(wt_trunc(c("a", "b")), class = "propensity_type_error")
   expect_error(wt_trunc(list(1, 2)), class = "propensity_error")

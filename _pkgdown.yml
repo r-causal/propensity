@@ -48,12 +48,14 @@ reference:
   - ps_refit
   - is_refit
 - title: Truncation
-  desc: Bound extreme propensity scores in place rather than dropping them.
+  desc: Bound extreme propensity scores, or the weights built from them, in
+    place rather than dropping them.
   contents:
   - ps_trunc
   - ps_trunc_meta
   - is_ps_truncated
   - is_unit_truncated
+  - wt_trunc
 - title: Calibration and tilting
   desc: Recalibrate fitted propensity scores, and evaluate the tilting function
     an estimand implies.

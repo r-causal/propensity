@@ -1,5 +1,20 @@
 # propensity 0.1.0.9000 (development version)
 
+* New `wt_trunc()` bounds extreme weights on the scale of the weights
+  themselves, so it applies to weights for any exposure type, including the
+  density-ratio weights of a continuous exposure. It offers four methods:
+  `"adaptive"` (the default), an upper bound of `sqrt(n) * log(n) / 5` after
+  Gruber et al. (2022); `"wt"`, bounds given as weight values; `"pctl"`, bounds
+  read at sample quantiles; and `"count"`, which bounds a given number of the
+  most extreme weights at the next one in. Each bounds only the upper tail
+  unless `lower` is supplied. The result keeps every attribute of the weights,
+  gains the estimand label `"; weights truncated"`, and records the method,
+  the bounds as given and as applied, and the weights moved, which the printed
+  weights report. The new `is_wt_truncated()` and `is_unit_wt_truncated()`
+  read that record, apart from `is_ps_truncated()` and `is_unit_truncated()`,
+  which describe a truncated propensity score. Weights truncated at different
+  bounds do not combine.
+
 * `ps_trim()` now trims a model of a continuous exposure on the scale of its
   conditional density. A `lm`, a `glm` whose variance is constant, a
   `MASS::rlm()`, or an `mgcv::gam()` of the dose can be trimmed with
