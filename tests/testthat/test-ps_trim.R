@@ -3016,6 +3016,96 @@ test_that("ps_refit() refits a score trimmed from a binomial additive fit", {
   expect_equal(as.numeric(refitted), expected, tolerance = 1e-8)
 })
 
+# A `subset` or `weights` passed through `ps_refit()` is read the way
+# `update()` reads it for a model fit on the retained rows: a column of those
+# rows is found first, and any other name is found where the call was made.
+test_that("ps_refit() evaluates a subset expression against the retained rows", {
+  fit <- trim_binary_fit()
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- trim_model_data[keep, ]
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    subset = x1 > 0
+  )
+  expect_lt(length(fitted(by_hand)), length(keep))
+  expected <- rep(NA_real_, nrow(trim_model_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  expect_no_warning(
+    from_expr <- ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > 0
+    )
+  )
+  expect_true(is_refit(from_expr))
+  expect_equal(as.numeric(from_expr), expected, tolerance = 1e-10)
+
+  # A name the retained rows do not carry is read from the calling frame, and a
+  # column the rows do carry masks a variable of the same name there.
+  cutoff <- 0
+  x1 <- rep(-1, 3)
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = x1 > cutoff
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+
+  # A logical vector indexes the retained rows, which are the data the refit is
+  # handed, as it always has.
+  positive <- kept_rows$x1 > 0
+  expect_equal(
+    as.numeric(ps_refit(
+      trimmed,
+      fit,
+      .data = trim_model_data,
+      subset = positive
+    )),
+    expected,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ps_refit() evaluates subset and weights expressions from a function", {
+  weighted_data <- trim_model_data
+  weighted_data$w <- rep(1:3, length.out = nrow(weighted_data))
+  fit <- glm(z ~ x1 + x2, data = weighted_data, family = binomial())
+  trimmed <- ps_trim(fit, method = "ps", lower = 0.2, upper = 0.8)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  kept_rows <- weighted_data[keep, ]
+
+  by_hand <- glm(
+    z ~ x1 + x2,
+    data = kept_rows,
+    family = binomial(),
+    weights = w,
+    subset = x2 < 0.5
+  )
+  expected <- rep(NA_real_, nrow(weighted_data))
+  expected[keep] <- predict(by_hand, newdata = kept_rows, type = "response")
+
+  # Neither the columns nor the threshold are visible where the model was fit,
+  # only in the frame of the function that asks for the refit.
+  refit_within <- function(trimmed, fit, data) {
+    threshold <- 0.5
+    ps_refit(trimmed, fit, .data = data, weights = w, subset = x2 < threshold)
+  }
+
+  expect_no_warning(refitted <- refit_within(trimmed, fit, weighted_data))
+  expect_equal(as.numeric(refitted), expected, tolerance = 1e-10)
+})
+
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps")

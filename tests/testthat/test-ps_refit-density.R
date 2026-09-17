@@ -324,6 +324,36 @@ test_that("ps_refit() reads a density trim's spread over the rows the refit anal
   )
 })
 
+test_that("ps_refit() evaluates a subset expression against a density trim's retained rows", {
+  dat <- sim_dose_trim()
+  fit <- lm(a ~ x1 + x2, data = dat)
+  trimmed <- ps_trim(fit, method = "density", lower = 0.05)
+  keep <- ps_trim_meta(trimmed)$keep_idx
+  expect_gt(length(ps_trim_meta(trimmed)$trimmed_idx), 0)
+
+  by_hand <- lm(a ~ x1 + x2, data = dat[keep, ], subset = x1 > 0)
+  expect_lt(length(fitted(by_hand)), length(keep))
+  expected_mu <- rep(NA_real_, nrow(dat))
+  expected_mu[keep] <- predict(by_hand, newdata = dat[keep, ])
+
+  expect_no_warning(refit <- ps_refit(trimmed, fit, subset = x1 > 0))
+  expect_true(is_refit(refit))
+  expect_equal(as.numeric(refit), expected_mu, tolerance = 1e-10)
+  expect_equal(
+    ps_trim_meta(refit)$sigma,
+    sqrt(mean(residuals(by_hand)^2)),
+    tolerance = 1e-10
+  )
+
+  # The expression and the logical vector it evaluates to over the retained
+  # rows describe the same refit.
+  positive <- dat$x1[keep] > 0
+  expect_identical(
+    ps_refit(trimmed, fit, subset = positive),
+    refit
+  )
+})
+
 # ---- ps_refit(): refusals ----------------------------------------------------
 
 test_that("ps_refit() refuses a model of level probabilities for a density trim", {
