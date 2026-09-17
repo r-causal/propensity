@@ -34,13 +34,11 @@ it does not, or when an object marked as trimmed carries no record at all,
 rather than name trimmed units at stale positions. Query the \code{ps_trim}
 object the record was written for instead.
 
-That check counts observations, which a reordering does not change, so it
-does not catch one. A \code{ps_trim} reordered through vctrs rather than through
-\code{[}, by \code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()}, keeps a record
-written for the old order, and \code{is_unit_trimmed()} answers from those
-positions and names the wrong units. A \code{psw} drops its record on those
-routes instead. See \code{\link[=ps_trim]{ps_trim()}} and \link{psw} for the
-whole contract.
+That check counts observations, which a reordering does not change, so a
+\code{ps_trim} or \code{psw} reordered through vctrs rather than through \code{[}, by
+\code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()}, drops the positions
+instead, and \code{is_unit_trimmed()} refuses the result. See \code{\link[=ps_trim]{ps_trim()}} and
+\link{psw} for the whole contract.
 }
 \examples{
 ps <- c(0.05, 0.3, 0.6, 0.95)

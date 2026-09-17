@@ -164,6 +164,19 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* A `ps_trim` or `ps_trunc` vector sliced without its subscript now drops the
+  positions in its record at any length, keeping the method and bounds.
+  `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` previously returned the
+  scores in a new order under a record still naming the old positions, so
+  `is_unit_trimmed()` and `is_unit_truncated()` named the wrong units, and
+  `wt_ate()`, `ps_refit()`, and the weights built from the result carried the
+  same wrong units on. `is_unit_trimmed()`, `is_unit_truncated()`, and
+  `ps_refit()` now refuse such a result with an error of class
+  `propensity_missing_meta_error`. `vctrs::vec_assign()` and the helpers built
+  on it drop the positions too. `[`, `sort()`, `unique()`, `rep()`, and `c()`
+  of one input still re-index the record, and `[<-`, `x[]`, and `is.na<-` keep
+  it.
+
 * Reordering or subsetting a `psw` with `[` now carries its trimming,
   truncation, and weight truncation records through the subscript, as `[`
   already did for a `ps_trim` or `ps_trunc`. `rev()`, `sort()`, and

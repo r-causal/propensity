@@ -717,14 +717,16 @@ test_that("filtering a ps_trim column drops the trimming record silently", {
   )
 })
 
-test_that("a length-preserving ps_trim restore keeps the trimming record", {
+test_that("a whole ps_trim keeps its trimming record through `[` and `[<-`", {
   x <- trim_record_fixture()
   meta <- ps_trim_meta(x)
   trimmed_units <- c(TRUE, FALSE, FALSE, TRUE, FALSE)
 
+  # A slice is handed no subscript, so even one that leaves every unit in place
+  # cannot vouch for the positions.
   whole <- expect_silent(vec_slice(x, seq_along(x)))
-  expect_identical(ps_trim_meta(whole), meta)
-  expect_identical(is_unit_trimmed(whole), trimmed_units)
+  expect_positions_dropped(ps_trim_meta(whole), meta)
+  expect_error(is_unit_trimmed(whole), class = "propensity_missing_meta_error")
 
   empty_subscript <- expect_silent(x[])
   expect_identical(ps_trim_meta(empty_subscript), meta)
@@ -920,22 +922,18 @@ test_that("a ps_trim that lost its record says so instead of reporting none", {
   expect_match(vec_ptype_full(sliced), "record dropped", fixed = TRUE)
 })
 
-test_that("a ps_trim reordered through vctrs keeps the record for the old order", {
-  # The documented limit of the coverage check, which counts observations and so
-  # sees nothing in a reordering. No subscript reaches the restore, so the
-  # record survives naming where the observations used to be.
+test_that("a ps_trim reordered through vctrs drops the record's positions", {
+  # The coverage check counts observations and so sees nothing in a
+  # reordering. No subscript reaches the restore, so the positions are dropped
+  # rather than left naming where the observations used to be.
   x <- trim_record_fixture()
 
   reordered <- expect_silent(vec_slice(x, 5:1))
   expect_equal(as.numeric(reordered), c(0.6, NA, 0.5, 0.3, NA))
-  expect_identical(ps_trim_meta(reordered), ps_trim_meta(x))
-
-  # The trimmed units now hold positions 2 and 5, and the record still names 1
-  # and 4, so the answer is the one the record gives rather than the one the
-  # values show.
-  expect_identical(
+  expect_positions_dropped(ps_trim_meta(reordered), ps_trim_meta(x))
+  expect_error(
     is_unit_trimmed(reordered),
-    c(TRUE, FALSE, FALSE, TRUE, FALSE)
+    class = "propensity_missing_meta_error"
   )
 
   # `[` is handed the subscript and re-indexes, so the same reordering through

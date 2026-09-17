@@ -252,15 +252,15 @@
 #' units at stale positions.
 #'
 #' That check compares how many observations the record was written for against
-#' how many the object holds, which a reordering does not change. An operation
-#' that reorders the observations through vctrs, rather than through `[`,
-#' therefore keeps a record written for the order they used to be in:
-#' `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` both return the values in
-#' a new order under positions still naming the old one, and
-#' [is_unit_truncated()] answers from those positions and names the wrong
-#' units. Subsetting with `[` is handed the subscript and re-indexes, so
-#' reorder with `[`, or put the propensity scores in the order you want before
-#' truncating them.
+#' how many the object holds, which a reordering does not change, so a route
+#' that could reorder the observations without saying how drops the positions
+#' instead, at any length: `vctrs::vec_slice()`, `dplyr::arrange()`,
+#' `dplyr::filter()`, and [vctrs::vec_assign()] and the helpers built on it
+#' return a `ps_trunc` whose record keeps its method and bounds and names no
+#' units, and [is_unit_truncated()] refuses it. Subsetting with `[`, `sort()`,
+#' `unique()`, and `rep()` know where the units went and re-index the record,
+#' and `[<-` and `is.na<-` move no unit and keep it, so reorder with `[`, or
+#' put the propensity scores in the order you want before truncating them.
 #'
 #' Casting a numeric vector into a `ps_trunc` with [vctrs::vec_cast()] is a type
 #' operation and not a truncation. The result is described by the method and
@@ -1407,13 +1407,11 @@ is_ps_truncated.ps_trunc_matrix <- function(x) {
 #'   all, rather than name truncated units at stale positions. Query the
 #'   `ps_trunc` object the record was written for instead.
 #'
-#'   That check counts observations, which a reordering does not change, so it
-#'   does not catch one. An operation that reorders through vctrs rather than
-#'   through `[`, such as `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`,
-#'   keeps a record written for the old order, and `is_unit_truncated()`
-#'   answers from those positions and names the wrong units. A `psw` drops its
-#'   record on those routes instead. See [ps_trunc()] and [psw]
-#'   for the whole contract.
+#'   That check counts observations, which a reordering does not change, so a
+#'   `ps_trunc` or `psw` reordered through vctrs rather than through `[`, such
+#'   as by `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`, drops the
+#'   positions instead, and `is_unit_truncated()` refuses the result. See
+#'   [ps_trunc()] and [psw] for the whole contract.
 #'
 #' @param x A `ps_trunc` object created by [ps_trunc()], or a [psw] vector built
 #'   from one.
@@ -1861,11 +1859,21 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
 # vctrs handles combination internally through vec_ptype2 and vec_cast
 # When combining ps_trunc objects with same parameters, indices won't be preserved
 
+# Marking scores as missing moves no unit, so it goes through base `[<-`, which
+# keeps the record, rather than through vctrs' method, whose restore cannot tell
+# an assignment from a reordering and drops the positions.
+#' @export
+`is.na<-.ps_trunc` <- function(x, value) {
+  x[value] <- NA_real_
+  x
+}
+
 #' @export
 `[.ps_trunc` <- function(x, i, ...) {
-  # If i is missing, just call NextMethod
+  # `x[]` takes every unit where it is, so the record still describes it. The
+  # restore behind `NextMethod()` would see a slice and drop the positions.
   if (missing(i)) {
-    return(NextMethod())
+    return(x)
   }
 
   # Get original metadata
@@ -1970,19 +1978,15 @@ vec_restore.ps_trunc <- function(x, to, ...) {
 
   # Nothing rebuilding a `ps_trunc` is handed the subscript behind a length
   # change, so a record written for a different number of observations cannot be
-  # re-indexed onto the data arriving here. Zero-length data is exempt: a
-  # prototype or an empty slice holds no observations, so no position in the
-  # record contradicts it.
-  #
-  # Data restored against a zero-length `to` did not come from `to`: a
-  # prototype, whether sliced from the one input of a combine or supplied by the
-  # caller, is restored onto observations it was never written for, in an order
-  # nothing here is told. Its positions are dropped without comment, as a
-  # combine of several inputs drops them, and base `c()` of a single vector keeps
-  # them by returning that vector.
-  if (length(data) > 0 && length(to) == 0) {
-    meta <- drop_trunc_record(meta)
-  } else if (length(data) > 0 && !record_covers(meta, length(data))) {
+  # re-indexed onto the data arriving here, and nor is the subscript behind a
+  # slice at the same length, which may have reordered the units. Every restore
+  # that holds observations therefore drops the positions, silently, and keeps
+  # what the record says about the modification. The routes that know where the
+  # units went place the record themselves: `[`, `sort()`, `unique()`, `rep()`,
+  # and base `c()` of a single vector, which returns it. Zero-length data is
+  # exempt: a prototype or an empty slice holds no observations, so no position
+  # in the record contradicts it.
+  if (length(data) > 0) {
     meta <- drop_trunc_record(meta)
   }
 

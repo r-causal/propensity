@@ -597,14 +597,19 @@ test_that("filtering a ps_trunc column drops the truncation record silently", {
   )
 })
 
-test_that("a length-preserving ps_trunc restore keeps the truncation record", {
+test_that("a whole ps_trunc keeps its truncation record through `[` and `[<-`", {
   x <- trunc_record_fixture()
   meta <- ps_trunc_meta(x)
   truncated_units <- c(TRUE, FALSE, FALSE, FALSE, FALSE)
 
+  # A slice is handed no subscript, so even one that leaves every unit in place
+  # cannot vouch for the positions.
   whole <- expect_silent(vec_slice(x, seq_along(x)))
-  expect_identical(ps_trunc_meta(whole), meta)
-  expect_identical(is_unit_truncated(whole), truncated_units)
+  expect_positions_dropped(ps_trunc_meta(whole), meta)
+  expect_error(
+    is_unit_truncated(whole),
+    class = "propensity_missing_meta_error"
+  )
 
   empty_subscript <- expect_silent(x[])
   expect_identical(ps_trunc_meta(empty_subscript), meta)
@@ -700,21 +705,18 @@ test_that("casting to ps_trunc records positions and a length", {
   expect_equal(ps_trunc_meta(from_integer)$n_obs, 2L)
 })
 
-test_that("a ps_trunc reordered through vctrs keeps the record for the old order", {
-  # The documented limit of the coverage check, which counts observations and so
-  # sees nothing in a reordering. No subscript reaches the restore, so the
-  # record survives naming where the observations used to be.
+test_that("a ps_trunc reordered through vctrs drops the record's positions", {
+  # The coverage check counts observations and so sees nothing in a
+  # reordering. No subscript reaches the restore, so the positions are dropped
+  # rather than left naming where the observations used to be.
   x <- trunc_record_fixture()
 
   reordered <- expect_silent(vec_slice(x, 5:1))
   expect_equal(as.numeric(reordered), c(0.6, 0.9, 0.5, 0.3, 0.1))
-  expect_identical(ps_trunc_meta(reordered), ps_trunc_meta(x))
-
-  # The winsorized unit now holds position 5, and the record still names 1, so
-  # the answer is the one the record gives rather than the one the values show.
-  expect_identical(
+  expect_positions_dropped(ps_trunc_meta(reordered), ps_trunc_meta(x))
+  expect_error(
     is_unit_truncated(reordered),
-    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+    class = "propensity_missing_meta_error"
   )
 
   # `[` is handed the subscript and re-indexes, so the same reordering through
@@ -1114,8 +1116,11 @@ test_that("assigning a trimmed score into a ps_trunc keeps its record", {
   expect_equal(vctrs::vec_data(x), vctrs::vec_data(truncated))
   expect_identical(ps_trunc_meta(x), ps_trunc_meta(truncated))
 
+  # vctrs' assignment reaches the same restore a slice does, so it keeps the
+  # values and drops the positions.
   assigned <- vctrs::vec_assign(truncated, 2, trimmed[2])
-  expect_identical(assigned, x)
+  expect_equal(vctrs::vec_data(assigned), vctrs::vec_data(x))
+  expect_positions_dropped(ps_trunc_meta(assigned), ps_trunc_meta(truncated))
 })
 
 test_that("casting a ps_trim to a ps_trunc records no bound", {

@@ -295,15 +295,15 @@ record covers the object it is given and raises an error of class
 units at stale positions.
 
 That check compares how many observations the record was written for against
-how many the object holds, which a reordering does not change. An operation
-that reorders the observations through vctrs, rather than through \code{[},
-therefore keeps a record written for the order they used to be in:
-\code{vctrs::vec_slice(x, 5:1)} and \code{dplyr::arrange()} both return the values in
-a new order under positions still naming the old one, and
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} answers from those positions and names the wrong
-units. Subsetting with \code{[} is handed the subscript and re-indexes, so
-reorder with \code{[}, or put the propensity scores in the order you want before
-truncating them.
+how many the object holds, which a reordering does not change, so a route
+that could reorder the observations without saying how drops the positions
+instead, at any length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()},
+\code{dplyr::filter()}, and \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}} and the helpers built on it
+return a \code{ps_trunc} whose record keeps its method and bounds and names no
+units, and \code{\link[=is_unit_truncated]{is_unit_truncated()}} refuses it. Subsetting with \code{[}, \code{sort()},
+\code{unique()}, and \code{rep()} know where the units went and re-index the record,
+and \verb{[<-} and \verb{is.na<-} move no unit and keep it, so reorder with \code{[}, or
+put the propensity scores in the order you want before truncating them.
 
 Casting a numeric vector into a \code{ps_trunc} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
 operation and not a truncation. The result is described by the method and
