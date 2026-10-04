@@ -442,22 +442,22 @@ frame:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span>
 <span><span class="co">#&gt;      term contrast  estimate  std.error statistic      p.value</span></span>
-<span><span class="co">#&gt; 1    mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
-<span><span class="co">#&gt; 2    mean        1 0.6411327 0.07597704  8.438507 3.214169e-17</span></span>
+<span><span class="co">#&gt; 1    mean        0 0.3211354 0.06959360  4.614439 3.941579e-06</span></span>
+<span><span class="co">#&gt; 2    mean        1 0.6411327 0.07597704  8.438507 3.214171e-17</span></span>
 <span><span class="co">#&gt; 3      rd   1 vs 0 0.3199973 0.10358436  3.089243 2.006669e-03</span></span>
-<span><span class="co">#&gt; 4 log(rr)   1 vs 0 0.6913736 0.24811365  2.786520 5.327738e-03</span></span>
-<span><span class="co">#&gt; 5 log(or)   1 vs 0 1.3288426 0.46175800  2.877790 4.004714e-03</span></span></code></pre></div>
+<span><span class="co">#&gt; 4 log(rr)   1 vs 0 0.6913736 0.24811364  2.786520 5.327737e-03</span></span>
+<span><span class="co">#&gt; 5 log(or)   1 vs 0 1.3288426 0.46175801  2.877790 4.004715e-03</span></span></code></pre></div>
 <p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
 ratios on their natural scale. The standard errors, z-statistics, and
 p-values stay on the log scale:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   term contrast  estimate  std.error statistic      p.value</span></span>
-<span><span class="co">#&gt; 1 mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
-<span><span class="co">#&gt; 2 mean        1 0.6411327 0.07597704  8.438507 3.214169e-17</span></span>
+<span><span class="co">#&gt; 1 mean        0 0.3211354 0.06959360  4.614439 3.941579e-06</span></span>
+<span><span class="co">#&gt; 2 mean        1 0.6411327 0.07597704  8.438507 3.214171e-17</span></span>
 <span><span class="co">#&gt; 3   rd   1 vs 0 0.3199973 0.10358436  3.089243 2.006669e-03</span></span>
-<span><span class="co">#&gt; 4   rr   1 vs 0 1.9964559 0.24811365  2.786520 5.327738e-03</span></span>
-<span><span class="co">#&gt; 5   or   1 vs 0 3.7766699 0.46175800  2.877790 4.004714e-03</span></span></code></pre></div>
+<span><span class="co">#&gt; 4   rr   1 vs 0 1.9964559 0.24811364  2.786520 5.327737e-03</span></span>
+<span><span class="co">#&gt; 5   or   1 vs 0 3.7766699 0.46175801  2.877790 4.004715e-03</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="continuous-outcomes">Continuous outcomes<a class="anchor" aria-label="anchor" href="#continuous-outcomes"></a>
