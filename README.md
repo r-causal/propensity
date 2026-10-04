@@ -8,6 +8,8 @@
 [![R-CMD-check](https://github.com/r-causal/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/r-causal/propensity/actions/workflows/R-CMD-check.yaml)
 [![Codecov test
 coverage](https://codecov.io/gh/r-causal/propensity/graph/badge.svg)](https://app.codecov.io/gh/r-causal/propensity)
+[![R-universe
+version](https://r-causal.r-universe.dev/propensity/badges/version)](https://r-causal.r-universe.dev/propensity)
 <!-- badges: end -->
 
 ## Overview
@@ -34,7 +36,17 @@ install.packages("propensity")
 ```
 
 You can install the development version of propensity from
-[GitHub](https://github.com/r-causal/propensity) with:
+[r-causal.r-universe.dev](https://r-causal.r-universe.dev/) with:
+
+``` r
+install.packages(
+  "propensity",
+  repos = c("https://r-causal.r-universe.dev", getOption("repos"))
+)
+```
+
+You can also install the development version of propensity from source
+from [GitHub](https://github.com/r-causal/propensity) with:
 
 ``` r
 # install.packages("pak")
